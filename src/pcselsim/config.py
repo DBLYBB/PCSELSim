@@ -44,6 +44,7 @@ class DeviceConfig:
     electrode_um: float = 300.0
     current_spread_um: float = 25.0
     threshold_current_A: float = 0.7
+    electrode_shape: str = "square"
 
 
 @dataclass(frozen=True)
@@ -134,6 +135,8 @@ def validate_config(config: SimulationConfig) -> None:
         raise ValueError("numerics.points must be an odd integer >= 9")
     if config.device.electrode_um > config.device.domain_um:
         raise ValueError("electrode_um cannot exceed domain_um")
+    if config.device.electrode_shape not in {"square", "circle"}:
+        raise ValueError("device.electrode_shape must be 'square' or 'circle'")
     if config.numerics.carrier_substeps < 1:
         raise ValueError("carrier_substeps must be >= 1")
     if not 0.0 < config.numerics.cfl <= 1.0:

@@ -22,3 +22,15 @@ def test_short_run_is_finite() -> None:
     assert np.all(np.isfinite(result.final_carrier_cm3))
     assert np.all(result.power_W >= 0.0)
 
+
+def test_custom_signal_projection_is_normalized() -> None:
+    config = SimulationConfig(
+        numerics=NumericsConfig(points=9, end_time_ns=0.001, noise=False)
+    )
+    projection = np.asarray((1.0, 1.0j, 0.0, 0.0))
+    original = projection.copy()
+    solver = TimeDomainSolver(config, signal_projection=projection)
+    assert solver.signal_projection.shape == (4,)
+    assert np.isclose(np.linalg.norm(solver.signal_projection), 1.0)
+    assert np.array_equal(projection, original)
+

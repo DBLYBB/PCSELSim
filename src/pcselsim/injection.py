@@ -27,3 +27,46 @@ def square_electrode_profile(x_m: np.ndarray, y_m: np.ndarray, device: DeviceCon
         raise ValueError("Current profile has zero integral")
     return profile / integral
 
+
+def circle_electrode_profile(x_m: np.ndarray, y_m: np.ndarray, device: DeviceConfig) -> np.ndarray:
+    """Radially smoothed circular contact, normalized to unit area integral.
+
+    ``electrode_um`` is the contact diameter.  A positive ``current_spread_um``
+    applies an error-function transition at the nominal contact radius.  This
+    is a compact radial approximation to lateral current spreading; it is not
+    an electrical drift-diffusion solution.
+    """
+    radius = 0.5 * device.electrode_um * 1e-6
+    sigma = device.current_spread_um * 1e-6
+    xx, yy = np.meshgrid(x_m, y_m)
+    radial = np.hypot(xx, yy)
+    if sigma <= 0.0:
+        profile = (radial <= radius).astype(float)
+    else:
+        profile = 0.5 * (1.0 - erf((radial - radius) / (np.sqrt(2.0) * sigma)))
+    dx = float(x_m[1] - x_m[0])
+    dy = float(y_m[1] - y_m[0])
+    integral = float(np.sum(profile) * dx * dy)
+    if integral <= 0.0:
+        raise ValueError("Current profile has zero integral")
+    return profile / integral
+
+
+def electrode_area_m2(device: DeviceConfig) -> float:
+    """Return the nominal electrical contact area in square metres."""
+    width_m = device.electrode_um * 1e-6
+    if device.electrode_shape == "square":
+        return width_m**2
+    if device.electrode_shape == "circle":
+        return np.pi * (0.5 * width_m)**2
+    raise ValueError(f"Unsupported electrode shape: {device.electrode_shape}")
+
+
+def electrode_profile(x_m: np.ndarray, y_m: np.ndarray, device: DeviceConfig) -> np.ndarray:
+    """Dispatch to the configured normalized electrical contact profile."""
+    if device.electrode_shape == "square":
+        return square_electrode_profile(x_m, y_m, device)
+    if device.electrode_shape == "circle":
+        return circle_electrode_profile(x_m, y_m, device)
+    raise ValueError(f"Unsupported electrode shape: {device.electrode_shape}")
+

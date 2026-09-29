@@ -47,7 +47,13 @@ def plot_spatial(result: SimulationResult, path: str | Path) -> Path:
     return path
 
 
-def plot_spectra(results: list[SimulationResult], path: str | Path, window_ns: float) -> Path:
+def plot_spectra(
+    results: list[SimulationResult],
+    path: str | Path,
+    window_ns: float,
+    center_wavelength_nm: float = 950.65,
+    span_nm: float = 0.60,
+) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(len(results), 1, sharex=True, figsize=(6.4, 1.8 * len(results) + 1.2))
@@ -55,9 +61,16 @@ def plot_spectra(results: list[SimulationResult], path: str | Path, window_ns: f
     for axis, result in zip(axes, results):
         count = max(16, int(round(window_ns * 1e-9 / result.dt_s)))
         signal = result.complex_signal[-count:]
-        wavelength, power = wavelength_spectrum(signal, result.dt_s, 950.65)
-        mask = (wavelength >= 950.35) & (wavelength <= 950.95)
-        axis.plot(wavelength[mask], power[mask], color="#222222", lw=1.0)
+        wavelength, power = wavelength_spectrum(signal, result.dt_s, center_wavelength_nm)
+        half_span = 0.5*span_nm
+        mask = (
+            (wavelength >= center_wavelength_nm-half_span)
+            & (wavelength <= center_wavelength_nm+half_span)
+        )
+        visible_power = power[mask].copy()
+        if visible_power.size and float(visible_power.max()) > 0.0:
+            visible_power /= float(visible_power.max())
+        axis.plot(wavelength[mask], visible_power, color="#222222", lw=1.0)
         axis.text(0.02, 0.78, f"{result.current_ratio:.2f} Ith", transform=axis.transAxes)
         axis.set_ylabel("Norm.")
     axes[-1].set_xlabel("Wavelength (nm)")

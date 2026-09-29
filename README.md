@@ -20,6 +20,14 @@ Inoue *et al.*, *Physical Review B* **99**, 035308 (2019) 为核心，实现四�
 复现论文所述的物理机制和定性趋势，但在获得作者原始 `C` 之前，不能诚实地称为逐点数值复现。
 详见 [复现状态](docs/reproduction_status_zh.md)。
 
+自定义半导体入口 `scripts/run_custom_semiconductor_pcsel.py` 已不再使用上述手工校准的 `C`：它从
+用户定义的单孔或多孔晶胞解析计算介电常数 Fourier 系数，求纵向 TE0 模，再按 Liang 第三章
+构造 `C1D + Crad + C2D`，同一个总矩阵同时送入有限区域本征求解和 Inoue 时域求解。推导、适用边界
+及验证见 [几何驱动 3D-CWT 说明](docs/geometry_derived_3dcwt_zh.md)。它现在默认使用 Inoue 表 I/II、
+`a=277 nm`、`L=300 um` 和图 2(a) 的双椭圆中心位移；时域用 400 um 计算域包住 300 um 电极及
+电流扩展区。椭圆尺寸是明确标注的理想化输入，因为论文
+没有公开真实 SEM 三维孔形；不能把该结果称为作者器件的逐像素重建。
+
 ## 安装
 
 建议使用 Python 3.11 或 3.12。在 PowerShell 中：
@@ -61,6 +69,55 @@ pcselsim reproduce --config configs\inoue2019.yaml --output results\inoue2019
 ```
 
 结果目录包含每个电流点的 `.npz`、瞬态图、空间分布图、组合频谱图和 `summary.csv`。
+
+## 两个可直接修改的自定义主程序
+
+半导体 PCSEL 请直接运行：
+
+```powershell
+python scripts\run_custom_semiconductor_pcsel.py
+```
+
+默认结果进入 `results/custom_semiconductor_inoue2019`。完整时域窗为 10 ns；修改几何时可先把
+脚本顶部 `08_time_domain` 改为 `False`，待线性模式确认后再运行时域。
+
+Wang 2024 三晶格结构使用独立入口和独立结果目录，不会覆盖 Inoue 图片：
+
+```powershell
+python scripts\run_custom_wang2024_triple_lattice.py
+```
+
+它实现 `a=474 nm`、三个直径 `90 nm` 的 InP 填充圆孔及论文 structure 1 的三个孔心，结果进入
+`results/custom_semiconductor_wang2024_triple_lattice`。默认只运行 01–07 冷腔步骤；论文主文没有给出
+完整 InAlGaAs 增益/复合参数，而完整外延表位于补充材料，因此第 08 步默认关闭。运行后先看
+`00_wang2024_comparison.json`，其中把公开目标与本模型结果分栏列出。详见
+[Wang 2024 三晶格复现说明](docs/wang2024_triple_lattice_zh.md)。
+
+Yb:YAG 部分目前保留但本轮不再扩展。现有入口只是准三能级概念验证，光学矩阵仍为示例，不能当作
+真实器件定量结果：
+
+```powershell
+python scripts\run_custom_ybyag_pcsel.py
+```
+
+这些文件都把波长、折射率、晶格与孔形、层结构、器件尺寸、损耗、耦合参数和数值参数集中放在
+文件顶部的 `PARAMETER PANEL`；`STEPS` 中每个 `True/False` 就是对应图片或计算的开关。也可以在
+命令行只跑一部分，例如：
+
+```powershell
+python scripts\run_custom_semiconductor_pcsel.py --only 02_lattice 03_k_space 05_linear_modes
+python scripts\run_custom_ybyag_pcsel.py --only 08_ybyag_gain 09_rate_dynamics 10_pump_scan
+```
+
+半导体默认实算得到 A 模为最低阈值模，`alpha L≈0.229`。`05_threshold_current_audit.json`
+同时记录由冷腔损耗反推的阈值与论文采用的 `0.7 A`；默认 Inoue 预设使用论文阈值，并保留差异供审计。
+时域频谱先减去所选带边模的公共失谐，再恢复到物理参考波长，避免把 THz 级带边失谐折叠到错误谱线。
+
+逐项说明、输出文件含义和推荐修改顺序见
+[自定义仿真主程序使用指南](docs/custom_simulation_guide_zh.md)；Yb:YAG 速率方程、单位换算、
+默认参数来源和当前假设见 [Yb:YAG 模型说明](docs/ybyag_model_zh.md)。Inoue 时域模型与 Liang
+有限区域模型到底共享什么、哪些求解器不同，见
+[Inoue–Liang 模型关系](docs/liang_inoue_model_relationship_zh.md)。
 
 ## PyCharm 设置
 

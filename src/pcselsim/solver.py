@@ -10,7 +10,7 @@ from scipy.linalg import expm
 from .config import SimulationConfig
 from .constants import c, e, pi
 from .coupling import calibrated_coupling_matrix, validate_passive_coupling
-from .injection import square_electrode_profile
+from .injection import electrode_area_m2, electrode_profile
 from .materials import active_gain_m, effective_index_shift, modal_gain_m
 from .observables import photon_density_m3, radiated_power_W
 
@@ -39,7 +39,12 @@ class TimeDomainSolver:
     Strang split. Incoming-wave boundary conditions are those of Liang Eq. (4.22).
     """
 
-    def __init__(self, config: SimulationConfig, coupling_m: np.ndarray | None = None):
+    def __init__(
+        self,
+        config: SimulationConfig,
+        coupling_m: np.ndarray | None = None,
+        signal_projection: np.ndarray | None = None,
+    ):
         self.config = config
         n = config.numerics.points
         half = 0.5 * config.device.domain_um * 1e-6
@@ -55,14 +60,25 @@ class TimeDomainSolver:
             else np.asarray(coupling_m, dtype=np.complex128)
         )
         validate_passive_coupling(self.coupling)
+        if signal_projection is None:
+            signal_projection = np.asarray((0.5, -0.5, -0.5, 0.5), dtype=np.complex128)
+        self.signal_projection = np.array(
+            signal_projection, dtype=np.complex128, copy=True
+        )
+        if self.signal_projection.shape != (4,):
+            raise ValueError("signal_projection must contain four complex wave coefficients")
+        norm = float(np.linalg.norm(self.signal_projection))
+        if norm <= np.finfo(float).eps:
+            raise ValueError("signal_projection cannot be the zero vector")
+        self.signal_projection /= norm
         self.coupling_half_step = expm(0.5j * self.vg * self.dt * self.coupling)
-        self.current_shape = square_electrode_profile(self.x, self.y, config.device)
+        self.current_shape = electrode_profile(self.x, self.y, config.device)
         self.center = n // 2
         self.reference_carrier = self._reference_carrier_density()
 
     def _reference_carrier_density(self) -> float:
         cfg = self.config
-        area = (cfg.device.electrode_um * 1e-6) ** 2
+        area = electrode_area_m2(cfg.device)
         j = cfg.device.threshold_current_A / area
         return (
             j
@@ -205,9 +221,11 @@ class TimeDomainSolver:
                 power[sample_index] = radiated_power_W(
                     field, self.coupling, self.dx, cfg.optical
                 )
-                # A-mode-like coherent signal; retains transverse-mode beating.
-                a_projection = 0.5 * (field[0] - field[1] - field[2] + field[3])
-                signal[sample_index] = np.sum(a_projection) * self.dx**2
+                # Coherent projection onto the selected geometry-derived band-edge mode.
+                projected = np.einsum(
+                    "a,aij->ij", self.signal_projection.conj(), field, optimize=True
+                )
+                signal[sample_index] = np.sum(projected)*self.dx**2
                 sample_index += 1
             if step == n_steps:
                 break

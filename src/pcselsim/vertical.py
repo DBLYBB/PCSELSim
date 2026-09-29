@@ -72,14 +72,15 @@ class LayerStack:
         beta = float(np.sqrt(max(beta2[0], 0.0)))
         field = np.zeros(points, dtype=float)
         field[1:-1] = vectors[:, 0]
-        norm = np.sqrt(np.trapezoid(np.abs(field) ** 2, z_nm * 1e-9))
+        integrate = getattr(np, "trapezoid", np.trapz)
+        norm = np.sqrt(integrate(np.abs(field) ** 2, z_nm * 1e-9))
         field /= norm
         density = np.abs(field) ** 2
-        total = float(np.trapezoid(density, z_nm * 1e-9))
+        total = float(integrate(density, z_nm * 1e-9))
         confinement: dict[str, float] = {}
         for name, start, stop in interfaces:
             mask = (z_nm >= start) & (z_nm <= stop)
-            value = float(np.trapezoid(density[mask], z_nm[mask] * 1e-9)) / total
+            value = float(integrate(density[mask], z_nm[mask] * 1e-9)) / total
             confinement[name] = confinement.get(name, 0.0) + value
         return VerticalMode(
             z_um=(z_nm - 0.5 * total_nm) * 1e-3,

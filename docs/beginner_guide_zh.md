@@ -34,7 +34,9 @@ PCSELSim/
 ├─ scripts/
 │  ├─ run_quick.py            第一次点这个：短测试
 │  ├─ run_full.py             短测试通过后点这个：完整计算
-│  └─ reproduce_inoue2019.py  带命令行参数的高级入口
+│  ├─ reproduce_inoue2019.py  带命令行参数的高级入口
+│  ├─ run_custom_semiconductor_pcsel.py  可编辑的 Inoue 双晶格/自定义器件入口
+│  └─ run_custom_wang2024_triple_lattice.py  Wang 2024 三晶格独立入口
 ├─ src/pcselsim/
 │  ├─ solver.py               光场-载流子时域求解核心
 │  ├─ materials.py            增益和载流子折射率
@@ -55,6 +57,10 @@ PCSELSim/
 1. `scripts/run_quick.py` 或 `scripts/run_full.py`：启动计算。
 2. `configs/inoue2019.yaml`：修改物理与数值参数。
 3. `results/`：查看结果。
+
+如果你的目标是修改晶格、孔形和层结构，应运行
+`scripts/run_custom_semiconductor_pcsel.py`。它默认输出到
+`results/custom_semiconductor_inoue2019`；完整第 08 步为 10 ns，第一次可先只运行 01–07。
 
 ## 2. 第一次用 PyCharm 打开工程
 
@@ -497,7 +503,8 @@ configs/inoue2019.yaml
 ### `device`
 
 - `domain_um`：整个二维计算窗口。
-- `electrode_um`：方形电极边长。
+- `electrode_um`：电极特征尺寸；`electrode_shape="square"` 时是边长，`"circle"` 时是直径。
+- `electrode_shape`：`"square"` 或 `"circle"`。Wang 2024 预设使用直径 200 um 的圆形窗口。
 - `current_spread_um`：电极外电流横向扩展宽度。
 - `threshold_current_A`：论文实验阈值电流，用于定义 `I/Ith`。
 

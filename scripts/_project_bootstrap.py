@@ -2,6 +2,10 @@
 
 This file is intentionally kept outside the installable package so the one-click
 entry scripts also work before ``pip install -e .`` has been run.
+
+中文：每个可直接点击运行的脚本都会先调用本文件，把项目根目录和 ``src`` 加入
+Python 搜索路径，因此 PyCharm 工作目录设错时也不会再出现 ``No module named
+pcselsim``。正式开发仍建议执行 ``pip install -e .``。
 """
 
 from __future__ import annotations

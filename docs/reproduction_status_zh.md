@@ -1,5 +1,13 @@
 # Inoue 2019 复现状态与证据边界
 
+> 2026-09 代码审计说明：载流子有效折射率扰动已补入
+> `n_active/n_eff` 投影因子，附录 A10 的时间折射率项已改用 `n_active` 分母，
+> `carrier_substeps` 也已真正执行。下列原目录时域数值来自修正前版本；冷腔结果
+> 不受影响。修正后的独立重跑保存在
+> `results/custom_semiconductor_inoue2019_audit_corrected`，稳态功率变化小于 0.6%，
+> 但高电流仍为单峰且空间分布偏心。完整审计见
+> [物理审计与代码地图](physics_audit_and_code_map_zh_en.md)。
+
 ## 论文明确公开的数据
 
 已逐项进入 `configs/inoue2019.yaml`：

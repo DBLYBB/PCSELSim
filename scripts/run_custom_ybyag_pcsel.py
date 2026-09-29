@@ -3,6 +3,10 @@
 The optical part uses the same square-lattice four-wave coupled-wave basis as
 the semiconductor platform.  Semiconductor carriers are replaced by a
 quasi-three-level Yb:YAG population reservoir with ground-state reabsorption.
+
+中文：该脚本目前是“方法迁移可行性”入口，不是已验证的全固态器件设计器。光学部分
+沿用四波基底，但下方损耗与耦合本征值仍为示例输入；速率方程只含空间平均的准三
+能级反转。需要定量设计时还必须加入泵浦传播、热/应力、空间烧孔和实测截面。
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from pcselsim.solid_state import (
 
 # ===========================================================================
 # PARAMETER PANEL A - PC geometry at the Yb:YAG laser wavelength
+# 参数区 A：全固态晶格几何。当前只绘制/检查方形四波基底。
 # ===========================================================================
 LASER_WAVELENGTH_NM = 1030.0
 PUMP_WAVELENGTH_NM = 940.0
@@ -55,6 +60,7 @@ LAYERS = (
 
 # ===========================================================================
 # PARAMETER PANEL B - optical cavity and four-wave coupling
+# 参数区 B：当前为示例冷腔本征值；尚未从真实 Yb:YAG 微纳结构推导。
 # ===========================================================================
 EFFECTIVE_INDEX = 1.78
 GROUP_INDEX = 1.83
@@ -70,6 +76,7 @@ FINITE_EIGEN_GRID_POINTS = 17
 # ===========================================================================
 # PARAMETER PANEL C - Yb:YAG quasi-three-level medium
 # Replace cross sections with measurements for your temperature/doping batch.
+# 参数区 C：截面和寿命应替换为目标温度、掺杂浓度与晶体批次的实测值。
 # ===========================================================================
 YB_DOPANT_DENSITY_CM3 = 1.38e20       # approximately 1 at.% Yb on Y sites
 UPPER_STATE_LIFETIME_MS = 0.95
@@ -86,19 +93,19 @@ RATE_SAMPLES = 1000
 
 
 # ===========================================================================
-# STEP SWITCHES
+# STEP SWITCHES / 步骤开关
 # ===========================================================================
 STEPS = {
-    "01_parameters": True,
-    "02_lattice": True,
-    "03_k_space": True,
-    "04_layer_stack": True,
-    "05_linear_modes": True,
-    "06_mode_atlas": True,
-    "07_length_sweep": True,
-    "08_ybyag_gain": True,
-    "09_rate_dynamics": True,
-    "10_pump_scan": True,
+    "01_parameters": True,   # input audit / 参数审计
+    "02_lattice": True,      # real-space geometry / 实空间晶格
+    "03_k_space": True,      # four retained waves / 四波基底
+    "04_layer_stack": True,  # schematic only in this prototype / 当前仅为结构示意
+    "05_linear_modes": True, # example cold-cavity values / 示例冷腔本征值
+    "06_mode_atlas": True,   # envelope and proxy FFP / 包络与代理远场
+    "07_length_sweep": True, # example finite-size trend / 示例尺寸趋势
+    "08_ybyag_gain": True,   # quasi-three-level gain/reabsorption / 净增益与再吸收
+    "09_rate_dynamics": True,# shared-reservoir transient / 平均反转率瞬态
+    "10_pump_scan": True,    # single-winning-mode steady scan / 单胜出模式稳态扫描
 }
 
 OUTPUT_DIRECTORY = PROJECT_ROOT/"results"/"custom_ybyag_pcsel"

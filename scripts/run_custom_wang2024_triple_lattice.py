@@ -8,6 +8,11 @@ The main paper specifies the in-plane geometry and measured device sizes but
 puts the complete epitaxial recipe in Supplementary Table S1.  The layer stack
 below is therefore an explicitly labelled effective Fig. 3(d) reconstruction;
 it must not be presented as the authors' exact epitaxy.
+
+中文：该预设复用自定义半导体主程序的同一套几何 3-D CWT 与 Inoue 时域内核。
+主文公开的三圆孔晶胞可直接重建，但完整外延表和 InAlGaAs 动力学参数不足，故默认
+只运行冷腔步骤。``08_time_domain`` 在获得可靠材料参数前保持 False；当前阈值电流
+仅为审计估算，不能替代论文实验值。
 """
 
 from __future__ import annotations
@@ -29,6 +34,7 @@ PROJECT_ROOT = bootstrap_project()
 
 # ===========================================================================
 # WANG 2024 PARAMETER PANEL - edit here for a derivative device
+# Wang 2024 参数区：派生器件从这里改，结果写入独立目录，不覆盖 Inoue 输出。
 # ===========================================================================
 LATTICE_CONSTANT_NM = 474.0
 HOLE_DIAMETER_NM = 90.0
@@ -68,13 +74,13 @@ DN_DN_CM3 = -2.0e-20
 CURRENT_RATIOS = (0.40/0.52, 0.50/0.52, 0.60/0.52, 1.00/0.52)
 
 STEPS = {
-    "01_parameters": True,
-    "02_lattice": True,
-    "03_k_space": True,
-    "04_layer_stack": True,
-    "05_linear_modes": True,
-    "06_mode_atlas": True,
-    "07_length_sweep": True,
+    "01_parameters": True,   # also writes paper-vs-model audit / 同时写论文对照
+    "02_lattice": True,      # published three-circle motif / 主文三圆孔晶胞
+    "03_k_space": True,      # square-lattice four-wave basis / 方形四波基底
+    "04_layer_stack": True,  # effective reconstruction, not exact epitaxy / 有效层结构
+    "05_linear_modes": True, # cold-cavity modes and convergence / 冷腔模与收敛
+    "06_mode_atlas": True,   # ideal single-mode fields / 理想单模场
+    "07_length_sweep": True, # finite-area trend / 有限尺寸趋势
     "08_time_domain": False,  # enable only after supplying a validated InAlGaAs carrier model
 }
 
@@ -82,7 +88,10 @@ OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "custom_semiconductor_wang2024_tri
 
 
 def configure_base_workflow() -> None:
-    """Apply this paper preset to the shared custom semiconductor workflow."""
+    """Apply this preset to the shared semiconductor workflow.
+
+    只替换器件参数和步骤开关；求解方程、单位约定及输出流程仍与半导体主程序相同。
+    """
     a = LATTICE_CONSTANT_NM
     r = HOLE_RADIUS_NM
     base.DEVICE_PRESET = "wang2024_structure1_triple_lattice"

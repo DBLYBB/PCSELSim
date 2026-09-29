@@ -1,4 +1,13 @@
-"""Geometry primitives and analytic in-plane Fourier coefficients."""
+"""Unit-cell geometry and analytic in-plane Fourier coefficients.
+
+English: Liang's 3-D CWT consumes Fourier coefficients of ``epsilon(x,y)``.
+Ellipses use the exact Bessel form factor and polygons use a boundary integral,
+avoiding raster-pixel noise.  Inclusions must not overlap.
+
+中文：Liang 三维耦合波理论以面内介电常数的 Fourier 系数为输入。椭圆采用解析
+Bessel 形状因子，多边形采用边界积分，因此不会引入像素化误差。当前实现不自动
+扣除重叠区域，用户必须保证多个孔互不重叠。
+"""
 
 from __future__ import annotations
 
@@ -10,7 +19,7 @@ from scipy.special import j1
 
 @dataclass(frozen=True)
 class Ellipse:
-    """An elliptical inclusion in fractional unit-cell coordinates."""
+    """Ellipse in fractional-cell coordinates / 以晶格常数归一化的椭圆孔。"""
 
     center: tuple[float, float]
     radii: tuple[float, float]
@@ -71,7 +80,7 @@ def _polygon_fourier(
 
 @dataclass(frozen=True)
 class SquareLatticeCell:
-    """Square unit cell with a uniform background and elliptical inclusions."""
+    """Square cell with uniform background and analytic inclusions / 方形晶胞。"""
 
     background_epsilon: float
     inclusions: tuple[Ellipse | PolygonInclusion, ...]

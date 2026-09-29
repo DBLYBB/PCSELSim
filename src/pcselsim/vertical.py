@@ -1,4 +1,15 @@
-"""One-dimensional finite-difference TE mode solver for multilayer waveguides."""
+"""Scalar one-dimensional TE solver for multilayer waveguides.
+
+English: the highest-beta eigenpair of the scalar Helmholtz operator supplies
+the vertical field, ``n_eff`` and layer overlaps required by Liang 3-D CWT.
+Indices are treated as wavelength-independent unless the caller performs an
+external wavelength sweep; vectorial/interface and material-dispersion effects
+are outside this baseline model.
+
+中文：本模块求标量 Helmholtz 算子的最高传播常数本征模，输出纵向场、``n_eff``
+及逐层限制因子，供 Liang 三维 CWT 使用。折射率默认无色散，且没有完整矢量界面
+修正；更换材料时应自行提供波长相关折射率并做 ``dz``、padding 收敛检查。
+"""
 
 from __future__ import annotations
 
@@ -28,7 +39,7 @@ class VerticalMode:
 
 @dataclass(frozen=True)
 class LayerStack:
-    """Finite layer stack padded by semi-infinite top/bottom media."""
+    """Finite stack padded by numerical top/bottom claddings / 数值截断的层结构。"""
 
     layers: tuple[Layer, ...]
     top_index: float
@@ -40,6 +51,7 @@ class LayerStack:
 
         Dirichlet boundaries are placed ``padding_um`` into the top and bottom
         claddings. Increase padding until ``effective_index`` has converged.
+        边界采用 Dirichlet 截断；必须增大 padding，直到 ``n_eff`` 收敛。
         """
         if dz_nm <= 0.0:
             raise ValueError("dz_nm must be positive")

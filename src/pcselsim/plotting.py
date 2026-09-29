@@ -1,4 +1,9 @@
-"""Publication-style plots for the Inoue 2019 reproduction."""
+"""Plots for the Inoue time-domain workflow / Inoue 时域结果绘图。
+
+Plotting never changes solver arrays.  Axis limits and normalization are visual
+choices and must not be confused with physics parameters. / 绘图不会修改求解结果；
+坐标裁剪与归一化只是显示设置，不是器件物理参数。
+"""
 
 from __future__ import annotations
 

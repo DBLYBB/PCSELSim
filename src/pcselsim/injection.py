@@ -1,4 +1,12 @@
-"""Electrical current-injection profiles."""
+"""Normalized electrical current-injection profiles.
+
+The returned profile integrates to one, so multiplying it by total current
+produces current density in A/m^2.  Error-function spreading is an empirical
+lateral smoothing model, not a semiconductor drift--diffusion calculation.
+
+返回的二维分布积分恒为 1，乘以总电流后就是 A/m^2 的电流密度。误差函数仅
+表示经验性的横向电流扩展，并不等价于完整的电学漂移—扩散求解。
+"""
 
 from __future__ import annotations
 

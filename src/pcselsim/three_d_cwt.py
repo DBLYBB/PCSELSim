@@ -8,6 +8,12 @@ Fourier coefficients and the solved vertical TE0 field.
 The Green functions are the interface-reflection-free approximations used in
 Liang Eq. (3.19) and Eq. (3.23).  This is the paper's documented baseline 3-D
 CWT, not the later generalized Green function for tilted walls/back reflectors.
+
+中文说明：本模块执行“晶胞 -> 介电常数 Fourier 系数 -> 纵向 TE0 ->
+``C1D + Crad + C2D``”的物理推导。四个基本波固定为 ``Rx,Sx,Ry,Sy``。
+当前 Green 函数忽略上下界面反射；为消除浮点误差造成的微小负辐射损耗，代码会
+将 ``Crad`` 的反厄米部分投影到半正定锥，并把修正量写入结果审计文件。较大的
+修正意味着近似或参数需要重新检查，而不是可以忽略的数值细节。
 """
 
 from __future__ import annotations
@@ -30,6 +36,10 @@ BASIC_ORDERS: tuple[tuple[int, int], ...] = (
 
 @dataclass(frozen=True)
 class ThreeDCWTSettings:
+    """Accuracy controls for Liang high-order sums and vertical solve.
+
+    ``truncation_order`` 对应高阶波截断 D；修改后必须做收敛检查。
+    """
     truncation_order: int = 10
     vertical_step_nm: float = 2.0
     bragg_tolerance_nm: float = 1e-4
@@ -62,7 +72,10 @@ class GeometryCouplingResult:
     unit_cell_response_y: dict[tuple[int, int], np.ndarray]
 
     def radiation_fields(self, fields: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Return Delta Ex and Delta Ey just above the PC, Liang Eq. (3.20)."""
+        """Return ``Delta Ex, Delta Ey`` above the PC, Liang Eq. (3.20).
+
+        这是由晶胞散射关系重建的辐射场，不是给包络人为乘涡旋相位。
+        """
         rx, sx, ry, sy = fields
         xi = self.fourier
         factor = self.radiation_surface_factor
@@ -135,7 +148,10 @@ def solve_bragg_vertical_mode(
     wavelength_guess_nm: float,
     settings: ThreeDCWTSettings,
 ) -> tuple[float, VerticalMode]:
-    """Solve beta(lambda)=2*pi/a by fixed-point iteration lambda=a*neff."""
+    """Solve ``beta(lambda)=2*pi/a`` by ``lambda=a*n_eff`` fixed-point iteration.
+
+    这是二阶 Γ 点的 Bragg 自洽条件；强色散材料需要让调用者提供随波长变化的折射率。
+    """
     wavelength_nm = float(wavelength_guess_nm)
     for _ in range(settings.bragg_max_iterations):
         mode = stack.solve_te0(wavelength_nm, dz_nm=settings.vertical_step_nm)
@@ -190,7 +206,12 @@ def _surface_green_integral(
 
 
 def _project_radiation_passive(matrix: np.ndarray) -> tuple[np.ndarray, float]:
-    """Remove only non-physical negative radiation eigenvalues from roundoff/approximation."""
+    """Remove non-physical negative radiation eigenvalues.
+
+    The returned correction is audited.  A correction comparable to a physical
+    loss is a model warning, not harmless cleanup. / 返回修正量会写入审计文件；若它与
+    物理损耗同量级，应重新检查 Green 函数近似和参数。
+    """
     hermitian = 0.5*(matrix+matrix.conj().T)
     radiation = (matrix-matrix.conj().T)/(2j)
     values, vectors = np.linalg.eigh(radiation)
@@ -208,7 +229,12 @@ def build_geometry_coupling(
     wavelength_guess_nm: float,
     settings: ThreeDCWTSettings = ThreeDCWTSettings(),
 ) -> GeometryCouplingResult:
-    """Build C=C1D+Crad+C2D directly from geometry and the vertical mode."""
+    """Build ``C=C1D+Crad+C2D`` from geometry and the vertical mode.
+
+    The result is shared by the finite-area and time-domain solvers, preventing
+    one plot from using a different fitted matrix. / 返回的同一个 C 同时供冷腔和时域
+    求解，避免不同图片暗中使用不同拟合参数。
+    """
     if settings.truncation_order < 2:
         raise ValueError("truncation_order must be >= 2")
     average_epsilon = float(np.real(cell.fourier_epsilon(0, 0)))

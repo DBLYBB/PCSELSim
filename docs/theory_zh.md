@@ -24,8 +24,9 @@ dPhi/dt = vg[-i delta + (g-alpha_in)/2]Phi
 `solver.py` 用 Strang splitting：局部 4x4 矩阵指数、二阶 Lax-Wendroff 定向传播、再做半步局部
 演化。默认 `CFL=0.8`，配置检查强制要求 `0<CFL<=1`。
 
-折射率的时间项按附录式 (A10) 的有效模近似实现为
-`gamma = 2 Gamma_active (dn/dN)(dN/dt)/n_eff`；它的量纲为 `s^-1`。
+折射率的时间项按附录式 (A10) 的有源层均匀扰动近似实现为
+`gamma = 2 Gamma_active (dn/dN)(dN/dt)/n_active`；它的量纲为 `s^-1`。
+这里分母是发生折射率变化的有源层折射率，不是整模的有效折射率。
 
 ## 2. 载流子
 
@@ -49,7 +50,7 @@ g_active(N) = gmax (N-Ntr) / [N + (gmax/-g0)Ntr]
 有效折射率变化近似为：
 
 ```text
-Delta n_eff = Gamma_active (dn/dN) (N-Nref)
+Delta n_eff = Gamma_active (n_active/n_eff) (dn/dN) (N-Nref)
 Delta delta = beta0 Delta n_eff / n_eff
 ```
 

@@ -1,4 +1,12 @@
-"""High-level reproduction workflow."""
+"""High-level legacy Inoue reproduction workflow.
+
+This entry uses the calibrated A/B/C/D coupling backend from ``coupling.py``.
+It is retained for regression and qualitative time-domain comparison.  New
+geometry-predictive work should run ``run_custom_semiconductor_pcsel.py``.
+
+本入口使用 ``coupling.py`` 中人工给定带边本征值的标定矩阵，适合回归测试和定性
+时域对照。需要从孔形预测耦合、阈值及远场时，应运行自定义半导体主程序。
+"""
 
 from __future__ import annotations
 

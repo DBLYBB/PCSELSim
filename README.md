@@ -20,6 +20,11 @@ Inoue *et al.*, *Physical Review B* **99**, 035308 (2019) 为核心，实现四�
 复现论文所述的物理机制和定性趋势，但在获得作者原始 `C` 之前，不能诚实地称为逐点数值复现。
 详见 [复现状态](docs/reproduction_status_zh.md)。
 
+最新一次逐结果物理审计、各目录可信度、论文公式到代码的完整映射，以及本轮发现并
+修正的折射率投影/载流子子步问题，见
+[物理审计与中英文代码地图](docs/physics_audit_and_code_map_zh_en.md)。开始引用任何
+已有图片前，也请先读 [结果目录说明](results/README.md)。
+
 自定义半导体入口 `scripts/run_custom_semiconductor_pcsel.py` 已不再使用上述手工校准的 `C`：它从
 用户定义的单孔或多孔晶胞解析计算介电常数 Fourier 系数，求纵向 TE0 模，再按 Liang 第三章
 构造 `C1D + Crad + C2D`，同一个总矩阵同时送入有限区域本征求解和 Inoue 时域求解。推导、适用边界
@@ -150,6 +155,9 @@ pcselsim reproduce --config configs\my_device.yaml --output results\my_device
 ```powershell
 pytest
 ```
+
+修改物理参数后还应做收敛与公差扫描；`pytest` 只验证实现契约和数值基本性质，不会
+自动证明某个真实器件与论文完全一致。
 
 理论映射见 [理论说明](docs/theory_zh.md)，Git 与多端同步见
 [Git 工作流](docs/git_workflow_zh.md)。

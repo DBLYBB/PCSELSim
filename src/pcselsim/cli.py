@@ -1,4 +1,9 @@
-"""Command-line interface."""
+"""Installed command-line interface / 安装后的命令行入口。
+
+It validates YAML and delegates to the same workflow used by PyCharm scripts;
+there is no second solver hidden here. / 本文件只解析命令并调用统一工作流，不包含
+另一套物理模型。
+"""
 
 from __future__ import annotations
 

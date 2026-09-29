@@ -334,7 +334,15 @@ src/pcselsim/materials.py
 modal_gain_m()
 ```
 
-折射率随时间变化的 `gamma` 项位于 `_field_local_half_step()`。
+载流子引起的有效折射率变化和折射率时间项分别使用：
+
+```text
+Delta n_eff = Gamma_active * n_active/n_eff * (dn/dN) * Delta N
+gamma = 2 * Gamma_active/n_active * (dn/dN) * (dN/dt)
+```
+
+二者的具体材料公式位于 `materials.py`，`_field_local_half_step()` 将它们放入
+Inoue 时域场方程。第一个改变相位/局部失谐，第二个是附录 A10 的实数振幅率修正。
 
 ### 7.5 论文附录式 (A11)-(A17)：耦合矩阵 C
 
@@ -452,7 +460,7 @@ wavelength_spectrum()
 2. 完整传播步：Rx/Sx/Ry/Sy 沿各自方向移动
 3. 加入自发辐射随机源
 4. 根据当前光子密度计算载流子方程
-5. 用 Heun 预测-校正法更新载流子
+5. 用 Heun 预测-校正法更新载流子；`carrier_substeps>1` 时在一个光学步内细分载流子步
 6. 再做半步局部光场演化
 7. 到达采样时刻时记录 N、功率和复电场信号
 ```

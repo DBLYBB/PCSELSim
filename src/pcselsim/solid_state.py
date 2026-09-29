@@ -1,4 +1,15 @@
-"""Quasi-three-level Yb:YAG rate equations coupled to PCSEL band-edge modes."""
+"""Exploratory quasi-three-level Yb:YAG mean-field rate model.
+
+English: this module replaces semiconductor carriers with one spatially
+averaged Yb excited-state reservoir, including ground-state reabsorption.  It
+does **not** yet solve pump propagation, temperature, spatial hole burning,
+up-conversion, stress, or a validated Yb:YAG photonic-crystal vertical mode;
+therefore its outputs are feasibility trends, not quantitative predictions.
+
+中文：本模块用一个空间平均的 Yb 激发态粒子数库替换半导体载流子，并包含基态
+再吸收。当前尚未求解泵浦传播、热效应、空间烧孔、上转换、应力，也没有经过实验
+验证的 Yb:YAG 光子晶体纵向模，因此输出只能视为可行性趋势，不能作为定量设计值。
+"""
 
 from __future__ import annotations
 
@@ -14,6 +25,7 @@ from .constants import c, hbar, pi
 
 @dataclass(frozen=True)
 class YbYAGMediumConfig:
+    """Editable spectroscopic and pump inputs / 可修改的光谱与泵浦参数。"""
     pump_wavelength_nm: float = 940.0
     laser_wavelength_nm: float = 1030.0
     refractive_index: float = 1.82
@@ -59,7 +71,10 @@ def _medium_si(config: YbYAGMediumConfig) -> dict[str, float]:
 
 
 def gain_per_m(excited_fraction: np.ndarray | float, config: YbYAGMediumConfig):
-    """Quasi-three-level net material gain including ground-state reabsorption."""
+    """Net gain including stimulated emission and ground-state reabsorption.
+
+    净增益为 ``sigma_e*N2 - sigma_a*N1``，因此低反转时允许为负。
+    """
     values = _medium_si(config)
     fraction = np.asarray(excited_fraction)
     n2 = values["nt"]*fraction
@@ -68,6 +83,7 @@ def gain_per_m(excited_fraction: np.ndarray | float, config: YbYAGMediumConfig):
 
 
 def threshold_excited_fraction(loss_per_m: np.ndarray, config: YbYAGMediumConfig):
+    """Solve ``Gamma*g(f_th)=alpha_total`` for each mode / 求各模式阈值反转率。"""
     values = _medium_si(config)
     numerator = loss_per_m/config.confinement_factor/values["nt"] + values["sigma_al"]
     denominator = values["sigma_el"]+values["sigma_al"]
@@ -81,6 +97,9 @@ def solve_ybyag_rates(config: YbYAGMediumConfig, mode_names: tuple[str, ...],
     N2 is shared by all modes (mean-field approximation).  This is appropriate
     for first validation of threshold and mode competition; a later 2-D N2(x,y)
     model is needed for spatial hole burning in a real pumped crystal.
+
+    所有模式共享同一个平均反转率；真实晶体中的泵浦吸收和空间烧孔需要进一步使用
+    二维或三维 ``N2(x,y,z)`` 模型。
     """
     values = _medium_si(config)
     count = len(mode_names)
@@ -136,7 +155,10 @@ def solve_ybyag_rates(config: YbYAGMediumConfig, mode_names: tuple[str, ...],
 
 def pump_scan(config: YbYAGMediumConfig, total_loss_per_m: np.ndarray,
               output_loss_per_m: np.ndarray, points: int = 80):
-    """Analytic steady-state single-winning-mode pump scan."""
+    """Analytic steady-state scan assuming one winning mode.
+
+    该扫描假设单模胜出并钳位反转率，适合查阈值量级，不描述多模拍频。
+    """
     values = _medium_si(config)
     threshold = threshold_excited_fraction(total_loss_per_m, config)
     winner = int(np.argmin(threshold))

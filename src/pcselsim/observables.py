@@ -1,4 +1,13 @@
-"""Observables corresponding to Eqs. (9) and (10) of Inoue et al."""
+"""Physical observables for the Inoue four-wave normalization.
+
+English: photon density follows Eq. (10), radiated power follows Eq. (9), and
+spectra are FFTs of a coherent modal projection.  The FFT linewidth is limited
+by the simulated time window and by the approximate spontaneous-noise model.
+
+中文：光子密度对应 Inoue 式 (10)，面辐射功率对应式 (9)，频谱由选定模式的
+相干投影做 FFT 得到。谱线宽度同时受时间窗与近似自发辐射噪声限制，不能直接
+当作实验绝对线宽。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +20,11 @@ from .constants import c, epsilon_0, hbar, pi
 def photon_density_m3(
     field: np.ndarray, carrier: CarrierConfig, optical: OpticalConfig
 ) -> np.ndarray:
-    """Photon density U in the active layer (Eq. 10), in m^-3."""
+    """Photon density ``U`` in the active layer (Eq. 10), in m^-3.
+
+    The ``n_eff*n_g`` factor is part of the paper's field normalization.
+    ``n_eff*n_g`` 来自论文的光场归一化，不能任意删去或重复计入。
+    """
     omega = 2.0 * pi * c / (optical.wavelength_nm * 1e-9)
     thickness = carrier.active_thickness_nm * 1e-9
     coefficient = (
@@ -28,7 +41,7 @@ def photon_density_m3(
 def radiated_power_W(
     field: np.ndarray, coupling_m: np.ndarray, dx_m: float, optical: OpticalConfig
 ) -> float:
-    """Surface-radiated power from Eq. (9)."""
+    """Surface-radiated power from Eq. (9) / 由式 (9) 积分得到面发射功率。"""
     c_phi = np.einsum("ab,bij->aij", coupling_m, field, optimize=True)
     quadratic = np.sum(np.conj(field) * c_phi, axis=0)
     density = 4.0 * epsilon_0 * optical.effective_index * c * np.imag(quadratic)
@@ -38,7 +51,11 @@ def radiated_power_W(
 def wavelength_spectrum(
     signal: np.ndarray, dt_s: float, center_wavelength_nm: float, window: bool = True
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return wavelength and normalized FFT power, sorted by wavelength."""
+    """Return normalized FFT power versus wavelength, sorted by wavelength.
+
+    Use a sufficiently small saved-sample interval to avoid aliasing modal
+    detunings. / 保存采样间隔必须足够小，否则带边失谐会发生混叠。
+    """
     signal = np.asarray(signal, dtype=np.complex128)
     signal = signal - np.mean(signal)
     if window:

@@ -34,3 +34,19 @@ def test_custom_signal_projection_is_normalized() -> None:
     assert np.isclose(np.linalg.norm(solver.signal_projection), 1.0)
     assert np.array_equal(projection, original)
 
+
+def test_carrier_substeps_are_used_and_reported() -> None:
+    config = SimulationConfig(
+        numerics=NumericsConfig(
+            points=9,
+            end_time_ns=0.001,
+            cfl=0.8,
+            sample_interval_ps=0.2,
+            carrier_substeps=3,
+            noise=False,
+        )
+    )
+    result = TimeDomainSolver(config).run(1.05)
+    assert result.metadata["carrier_substeps"] == 3
+    assert np.all(np.isfinite(result.final_carrier_cm3))
+

@@ -1,4 +1,13 @@
-"""Typed configuration objects and YAML loading."""
+"""Typed configuration objects, unit conventions, and YAML loading.
+
+English: names ending in ``_nm``, ``_um``, ``_ns``, ``_cm`` or ``_cm3`` expose
+paper-friendly units; numerical kernels convert them to SI.  Unknown YAML keys
+are rejected so spelling errors cannot silently change a simulation.
+
+中文：字段名中的单位就是用户输入单位，数值内核再统一换算为 SI。YAML 中出现
+未知字段会立即报错，避免拼写错误被静默忽略。自定义器件时应优先改配置或主程序
+顶部参数区，不要在求解器内部写死参数。
+"""
 
 from __future__ import annotations
 
@@ -11,6 +20,7 @@ import yaml
 
 @dataclass(frozen=True)
 class OpticalConfig:
+    """Optical inputs for the square-lattice four-wave basis / 四波光学参数。"""
     lattice_constant_nm: float = 277.0
     wavelength_nm: float = 950.65
     group_index: float = 3.513
@@ -29,6 +39,7 @@ class OpticalConfig:
 
 @dataclass(frozen=True)
 class CarrierConfig:
+    """Semiconductor reservoir parameters used in Inoue Eqs. (10)-(11)."""
     maximum_gain_cm: float = 2000.0
     zero_carrier_gain_cm: float = -5000.0
     transparency_density_cm3: float = 1.5e18
@@ -40,6 +51,7 @@ class CarrierConfig:
 
 @dataclass(frozen=True)
 class DeviceConfig:
+    """Finite-area device and electrical-contact geometry / 器件与电极几何。"""
     domain_um: float = 400.0
     electrode_um: float = 300.0
     current_spread_um: float = 25.0
@@ -49,6 +61,10 @@ class DeviceConfig:
 
 @dataclass(frozen=True)
 class NumericsConfig:
+    """Discretization controls; these change accuracy, not device physics.
+
+    数值参数会影响稳定性和收敛性，不应被当作可拟合的器件物理量。
+    """
     points: int = 41
     end_time_ns: float = 10.0
     cfl: float = 0.8
@@ -61,6 +77,7 @@ class NumericsConfig:
 
 @dataclass(frozen=True)
 class ReproductionConfig:
+    """Current sweep and spectrum-window controls / 电流扫描及频谱窗口。"""
     current_ratios: tuple[float, ...] = (1.05, 1.4, 2.8, 4.2)
     spectrum_window_ns: float = 4.0
 

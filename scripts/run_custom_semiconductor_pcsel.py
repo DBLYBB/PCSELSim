@@ -2,6 +2,11 @@
 
 PyCharm users: edit only the PARAMETER PANEL and STEP SWITCHES, then click Run.
 Every dimensional name carries its unit.  Results are written to a new folder.
+
+中文操作：初学者只需修改下方三个 ``PARAMETER PANEL`` 和 ``STEP SWITCHES``，
+然后在 PyCharm 中右键本文件选择 Run。程序按“晶胞 Fourier 系数 -> 纵向 TE0 ->
+Liang 3-D CWT 耦合矩阵 -> 有限区域冷腔模 -> Inoue 载流子—光场时域方程”执行。
+线性与时域步骤使用同一个几何推导 C 矩阵；不要用数值网格或绘图范围去拟合实验。
 """
 
 from __future__ import annotations
@@ -46,6 +51,7 @@ from pcselsim.vertical import Layer, LayerStack
 
 # ===========================================================================
 # PARAMETER PANEL A - wavelength, lattice and hole geometry
+# 参数区 A：波长、晶格与孔形。孔尺寸/位置改变会重新计算全部 Fourier 系数。
 # ===========================================================================
 DEVICE_PRESET = "inoue2019_idealized_double_lattice"
 RUN_TITLE = "CUSTOM SEMICONDUCTOR PCSEL - Inoue idealized double lattice"
@@ -101,6 +107,7 @@ VERTICAL_PADDING_UM = 1.0
 
 # ===========================================================================
 # PARAMETER PANEL B - four-wave optical model and finite device
+# 参数区 B：纵向光学、有限器件尺寸与数值收敛设置。
 # ===========================================================================
 ACTIVE_INDEX = 3.584
 ACTIVE_CONFINEMENT_FACTOR = 0.044  # Inoue Table II
@@ -116,6 +123,7 @@ THRESHOLD_CURRENT_SOURCE = "paper"  # paper=0.7 A; derived value is still audite
 
 # Accuracy controls for geometry -> C1D+Crad+C2D and finite Eq. (4.21).
 # D=10 is the convergence setting stated in Liang Chapter 3.
+# 这些是精度参数而不是器件参数；正式结果至少比较两档 D 和多档有限网格。
 CWT_TRUNCATION_ORDER = 10
 VERTICAL_STEP_NM = 3.0
 FINITE_EIGEN_GRIDS = (13, 17, 21, 25)  # extrapolated to zero grid spacing
@@ -125,6 +133,7 @@ LENGTH_SWEEP_UM = (70.0, 150.0, 300.0, 500.0)
 
 # ===========================================================================
 # PARAMETER PANEL C - semiconductor carrier and time-domain model
+# 参数区 C：Inoue 式 (10)-(11) 的半导体载流子与时域设置。
 # ===========================================================================
 MAXIMUM_GAIN_CM = 2000.0
 ZERO_CARRIER_GAIN_CM = -5000.0
@@ -146,24 +155,24 @@ SPECTRUM_WINDOW_NS = 2.0
 
 
 # ===========================================================================
-# STEP SWITCHES
+# STEP SWITCHES / 步骤开关：False 只跳过输出，不会更改其他步骤的物理参数。
 # ===========================================================================
 STEPS = {
-    "01_parameters": True,
-    "02_lattice": True,
-    "03_k_space": True,
-    "04_layer_stack": True,
-    "05_linear_modes": True,
-    "06_mode_atlas": True,
-    "07_length_sweep": True,
-    "08_time_domain": True,   # slowest step; set False while editing geometry.
+    "01_parameters": True,    # save inputs and C1D/Crad/C2D / 保存参数与耦合分量
+    "02_lattice": True,       # real-space unit cell / 实空间晶胞
+    "03_k_space": True,       # retained Rx,Sx,Ry,Sy waves / 四个基本 Bloch 波
+    "04_layer_stack": True,   # scalar TE0 and overlap / 纵向 TE0 与限制因子
+    "05_linear_modes": True,  # Liang Eqs. 4.21-4.23 / 有限区域冷腔模与阈值
+    "06_mode_atlas": True,    # device, unit cell, vector FFP / 包络、晶胞场与矢量远场
+    "07_length_sweep": True,  # finite-size scaling / 器件尺寸扫描
+    "08_time_domain": True,   # Inoue Eqs. 8-11; slowest / 最慢的非线性时域步骤
 }
 
 OUTPUT_DIRECTORY = PROJECT_ROOT/"results"/"custom_semiconductor_inoue2019"
 
 
 def build_unit_cell(lattice: LatticeSpec) -> SquareLatticeCell:
-    """Convert the editable hole parameters into exact Fourier geometry."""
+    """Convert editable holes into exact Fourier geometry / 构建解析 Fourier 晶胞。"""
     epsilon_hole = lattice.hole_index**2
     source = lattice.inclusions or (
         LatticeInclusionSpec(

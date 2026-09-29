@@ -3,6 +3,12 @@
 The optical state is the same square-lattice four-wave vector used by the
 Inoue time-domain solver: (Rx, Sx, Ry, Sy).  This module provides the linear
 finite-area companion problem used for thresholds, envelopes and far fields.
+
+中文说明：本模块解决 Liang 式 (4.21) 的有限区域冷腔本征问题，并据式
+(4.23)--(4.26) 生成模式包络与远场。它与 Inoue 时域程序共享同一个四波基底和
+同一个耦合矩阵，但数值任务不同：这里求线性本征模，``solver.py`` 求载流子—光场
+非线性瞬态。所有模式阈值都应经过网格外推；近简并模的 A/B 标签需结合重叠与场形
+共同判断，不能只看排序编号。
 """
 
 from __future__ import annotations
@@ -150,7 +156,15 @@ def _upwind_1d(n: int, spacing_m: float, positive_direction: bool) -> sparse.csr
 
 
 def finite_area_operator(spec: FourWaveOpticalSpec, coupling: np.ndarray) -> sparse.csr_matrix:
-    """Discretize (delta+i alpha)Phi = C Phi + i D Phi."""
+    """Discretize Liang Eq. (4.21), ``(delta+i*alpha)Phi=C Phi+i D Phi``.
+
+    One-sided upwind derivatives impose Eq. (4.22) through zero incoming ghost
+    cells.  This is stable and physically open, but only first-order accurate;
+    use :func:`solve_finite_modes_converged` for reported losses.
+
+    单边迎风差分通过“入射 ghost cell 为零”实现式 (4.22) 开放边界。该离散仅一阶
+    精度，正式报告损耗时必须使用多网格外推。
+    """
     n = spec.grid_points
     if n < 9:
         raise ValueError("grid_points must be >= 9")
@@ -204,6 +218,9 @@ def solve_finite_modes(
     3-D CWT matrix.  The calibrated A/B/C/D matrix remains the backwards-
     compatible fallback.  The returned fields are the actual eigenvectors;
     they are never replaced by a cosmetic analytic envelope.
+
+    对近简并本征值，ARPACK 返回的向量可在简并子空间内旋转；程序用带边重叠、场
+    粗糙度和被动性共同选择分支。因此必须同时查看 ``band_overlap`` 与模式图。
     """
     coupling = coupling_from_modal_values(spec) if coupling is None else coupling
     operator = finite_area_operator(spec, coupling)
@@ -297,6 +314,8 @@ def solve_finite_modes_converged(
     Fitting each complex eigenvalue against 1/N removes its leading numerical
     outflow error.  The eigenfield/radiation map is retained from the finest
     grid, while reported delta and alpha use the intercept.
+
+    也就是说：表格中的频率/损耗使用 ``1/N -> 0`` 截距，图片中的场形来自最细网格。
     """
     if len(grid_points) < 3 or tuple(sorted(grid_points)) != grid_points:
         raise ValueError("grid_points must contain at least three increasing sizes")
@@ -376,7 +395,12 @@ def unit_cell_field_from_coefficients(
 
 def far_field(intensity_field: np.ndarray, wavelength_nm: float, length_um: float,
               view_deg: float = 3.0, padding: int = 8) -> tuple[np.ndarray, np.ndarray, float]:
-    """Return angle grid, normalized FFP, and second-moment divergence angle."""
+    """Return a scalar-aperture FFP and second-moment full divergence.
+
+    This helper is for envelope/proxy studies.  When geometry-derived
+    ``radiation_x/y`` exists, use :func:`vector_far_field` instead.
+    这是标量孔径代理；有 3-D CWT 辐射分量时应使用矢量远场函数。
+    """
     n = intensity_field.shape[0]
     padded_n = padding*n
     padded = np.zeros((padded_n, padded_n), dtype=np.complex128)
@@ -408,7 +432,11 @@ def vector_far_field(
     view_deg: float = 3.0,
     padding: int = 8,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
-    """Liang Eqs. (4.24)-(4.26) for two complex radiation components."""
+    """Liang Eqs. (4.24)-(4.26) for two complex radiation components.
+
+    Zero padding only refines angular sampling; it does not narrow the physical
+    beam. / 补零只增加角度采样密度，不会改变真实发散角。
+    """
     n = field_x.shape[0]
     padded_n = padding*n
     spectra = []

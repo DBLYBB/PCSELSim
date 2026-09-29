@@ -1,4 +1,9 @@
-"""Result serialization."""
+"""Lossless numerical-result serialization / 原始数值结果保存。
+
+NPZ files are the evidence used to regenerate plots; figures alone should not
+be used for quantitative comparison. / 定量比较应读取 NPZ 原始数组，不应只从图片
+估数。
+"""
 
 from __future__ import annotations
 

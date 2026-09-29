@@ -8,7 +8,8 @@ __pycache__/
 .ruff_cache/
 build/
 dist/
-results/
+results/*
+!results/README.md
 tmp/
 *.npz
 

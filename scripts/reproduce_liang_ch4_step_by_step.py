@@ -31,6 +31,14 @@ clearly labelled calculated counterparts; it never fabricates experimental
 measurements.  Exact numerical identity also requires the unpublished/full
 3-D coupling matrix C.  The present implementation uses the same four-wave
 basis as PCSELSim and calibrates the reported Chapter-4 values explicitly.
+
+中文范围说明
+------------
+该脚本用于逐图学习第四章，不是所有图片都由第一性原理独立预测。部分曲线直接使用
+论文给出的检查点做标定，实验谱和 SEM 图只能生成明确标注的理论代理。每张图的
+``calculated / calibrated / schematic / proxy`` 来源会写入 ``run_manifest.json``；
+因此图片看起来相似不等于完成了实验数据复现。真正的自定义预测应使用
+``run_custom_semiconductor_pcsel.py`` 中的几何驱动求解链。
 """
 
 from __future__ import annotations
@@ -78,6 +86,27 @@ STEP_SWITCHES: dict[str, bool] = {
     "figure_4_12": True,
     "figure_4_13": True,
     "figure_4_14": True,
+}
+
+# Per-figure evidence class written to run_manifest.json.  This prevents a
+# teaching/calibrated panel from later being mistaken for an independent
+# prediction. / 每张图的证据类型会写入清单，避免把教学代理误认为独立预测。
+FIGURE_PROVENANCE: dict[str, str] = {
+    "00_bloch_expansion": "analytic teaching diagram of Eqs. 4.2-4.10",
+    "figure_4_01": "schematic device plus illustrative analytic band curves",
+    "figure_4_02": "finite Eq. 4.21 solve; threshold panel uses Table 4.2 checkpoints",
+    "figure_4_03": "analytic Gaussian/derivative aperture far-field proxy",
+    "figure_4_04": "analytic boundary-interference explanation of Eq. 4.22",
+    "figure_4_05": "calibrated length-dependence curves",
+    "figure_4_06": "calibrated RIT mode-crossing near the reported length",
+    "figure_4_07": "calculated counterpart; no experimental raw data",
+    "figure_4_08": "calculated counterpart; no experimental raw data",
+    "figure_4_09": "Gaussian/doughnut far-field proxy",
+    "figure_4_10": "reproducible schematic, not SEM reconstruction",
+    "figure_4_11": "reported checkpoints plus analytic mode envelopes",
+    "figure_4_12": "synthetic spectral proxy, not measured data",
+    "figure_4_13": "scaling fit to four reported checkpoints",
+    "figure_4_14": "calibrated flatness trend with constructed envelopes",
 }
 
 # True: each figure window pauses the program until you close it.
@@ -975,9 +1004,13 @@ def main() -> None:
         "grid_n": grid_n,
         "equations": ["4.2", "4.3", "4.7-4.10", "4.21-4.26", "4.30"],
         "steps": {},
+        "figure_provenance": FIGURE_PROVENANCE,
+        "evidence_level": "teaching reconstruction with calibrated/proxy panels",
         "limitations": [
             "experimental/SEM raw data are not contained in the PDF",
             "full unpublished 3-D coupling matrix is not available",
+            "several panels are analytic illustrations or fits to reported checkpoints",
+            "the compact central-difference eigensolver is pedagogical, not the production predictor",
         ],
     }
     total = len(steps)

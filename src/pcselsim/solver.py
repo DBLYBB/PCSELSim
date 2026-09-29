@@ -1,4 +1,14 @@
-"""Split-step time-domain 3D coupled-wave solver."""
+"""Time-domain four-wave coupled-wave and carrier solver.
+
+English: this is the production implementation of Inoue Eqs. (8), (10) and
+(11), with Liang Eq. (4.22) open incoming-wave boundaries.  Strang splitting
+separates local coupling/gain from propagation; Lax--Wendroff advances the four
+directed envelopes; Heun advances the carrier reservoir.
+
+中文：这是 Inoue 式 (8)、(10)、(11) 的时域求解核心，并采用 Liang 式 (4.22)
+的开放入射边界。Strang 分裂处理局域耦合与传播，Lax--Wendroff 推进四个行波
+包络，Heun 法推进载流子。所有内部长度、时间和密度均为 SI 单位。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +21,12 @@ from .config import SimulationConfig
 from .constants import c, e, pi
 from .coupling import calibrated_coupling_matrix, validate_passive_coupling
 from .injection import electrode_area_m2, electrode_profile
-from .materials import active_gain_m, effective_index_shift, modal_gain_m
+from .materials import (
+    active_gain_m,
+    effective_index_shift,
+    modal_gain_m,
+    temporal_index_rate_s,
+)
 from .observables import photon_density_m3, radiated_power_W
 
 
@@ -37,6 +52,9 @@ class TimeDomainSolver:
     The four directional envelope waves use second-order Lax-Wendroff propagation.
     Local gain, carrier detuning, and the 4x4 C matrix are applied using a
     Strang split. Incoming-wave boundary conditions are those of Liang Eq. (4.22).
+
+    四个分量固定按 ``(Rx, Sx, Ry, Sy)`` 排列，分别沿 ``+x,-x,+y,-y`` 传播。
+    ``coupling_m`` 必须以 m^-1 为单位，且其反厄米（辐射）部分必须为半正定。
     """
 
     def __init__(
@@ -87,7 +105,11 @@ class TimeDomainSolver:
         )
 
     def _advect(self, field: np.ndarray) -> np.ndarray:
-        """Second-order Lax-Wendroff update with zero incoming envelopes."""
+        """Second-order Lax--Wendroff update with zero incoming envelopes.
+
+        The zero values are applied only on *incoming* characteristics; outgoing
+        waves leave the domain. / 零边界只施加在入射特征线上，出射波可离开计算域。
+        """
         q = self.cfl
         moved = np.zeros_like(field)
         # Rx (+x). x=0 is incoming; x=L is outgoing.
@@ -125,6 +147,10 @@ class TimeDomainSolver:
         return moved
 
     def _laplacian_neumann(self, values: np.ndarray) -> np.ndarray:
+        """Five-point carrier Laplacian with zero-normal-flux boundaries.
+
+        载流子在计算域边缘采用 Neumann 条件，即法向扩散通量为零。
+        """
         padded = np.pad(values, 1, mode="edge")
         return (
             padded[1:-1, 2:]
@@ -146,14 +172,9 @@ class TimeDomainSolver:
             detuning = beta0 * dn_eff / cfg.optical.effective_index
             scalar_rate = scalar_rate - 1j * self.vg * detuning
         if cfg.optical.temporal_index_term:
-            dn_dN_m3 = cfg.optical.dn_dN_cm3 * 1e-6
-            gamma = (
-                2.0
-                / cfg.optical.effective_index
-                * cfg.optical.confinement_factor
-                * dn_dN_m3
-                * dcarrier_dt
-            )
+            # Inoue Appendix Eq. (A10); unlike phase detuning, this is a real
+            # amplitude-rate correction. / 附录 A10：这是实数振幅率修正，不是相位失谐。
+            gamma = temporal_index_rate_s(dcarrier_dt, cfg.optical)
             scalar_rate = scalar_rate - gamma
         field = np.einsum("ab,bij->aij", self.coupling_half_step, field, optimize=True)
         return field * np.exp(0.5 * self.dt * scalar_rate)[None, :, :]
@@ -165,6 +186,9 @@ class TimeDomainSolver:
         thickness = cfg.carrier.active_thickness_nm * 1e-9
         tau = cfg.carrier.lifetime_ns * 1e-9
         diffusion = cfg.carrier.diffusion_cm2_s * 1e-4
+        # Inoue Eq. (10): injection - spontaneous/nonradiative reservoir decay
+        # - stimulated recombination + lateral diffusion.
+        # Inoue 式 (10)：注入 - 寿命复合 - 受激复合 + 横向扩散。
         photons = photon_density_m3(field, cfg.carrier, cfg.optical)
         stimulated = self.vg * active_gain_m(carrier, cfg.carrier) * photons
         # Absorptive gain must not create carriers in this phenomenological equation.
@@ -176,6 +200,31 @@ class TimeDomainSolver:
             + diffusion * self._laplacian_neumann(carrier)
         )
 
+    def _advance_carrier(
+        self, carrier: np.ndarray, field: np.ndarray, current_density: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Advance carriers over one optical step using subcycled Heun updates.
+
+        ``carrier_substeps`` is useful when diffusion or strong stimulated
+        depletion becomes faster than the carrier update can resolve.  The
+        optical field is frozen during these inexpensive substeps.  The second
+        return value is the average ``dN/dt`` over the full optical step, which
+        is the quantity required by Appendix Eq. (A10).
+
+        ``carrier_substeps`` 用于载流子扩散或强受激耗尽需要更细时间步的情形；
+        子步期间固定光场。第二个返回值是整个光学步内的平均 ``dN/dt``。
+        """
+        old = carrier
+        updated = carrier
+        substeps = self.config.numerics.carrier_substeps
+        sub_dt = self.dt / substeps
+        for _ in range(substeps):
+            rhs0 = self._carrier_rhs(updated, field, current_density)
+            predicted = np.maximum(updated + sub_dt * rhs0, 0.0)
+            rhs1 = self._carrier_rhs(predicted, field, current_density)
+            updated = np.maximum(updated + 0.5 * sub_dt * (rhs0 + rhs1), 0.0)
+        return updated, (updated - old) / self.dt
+
     def _add_spontaneous_noise(
         self, field: np.ndarray, carrier: np.ndarray, rng: np.random.Generator
     ) -> None:
@@ -186,6 +235,11 @@ class TimeDomainSolver:
         spontaneous_photons = (
             cfg.carrier.spontaneous_emission_factor * carrier / tau * self.dt
         )
+        # This is a reproducible, grid-aware seed model, not the paper's
+        # unpublished Langevin-source normalization.  It supports turn-on and
+        # qualitative spectra, but not quantitative linewidth prediction.
+        # 这是可重复的网格噪声种子，并非论文未公开的严格 Langevin 归一化；
+        # 可用于启动与定性频谱，不能据此定量预测线宽。
         # Convert the injected photon density back to four complex field amplitudes.
         unit_field = np.ones_like(field)
         conversion = photon_density_m3(unit_field, cfg.carrier, cfg.optical)
@@ -194,6 +248,10 @@ class TimeDomainSolver:
         field += noise * np.sqrt(variance / 8.0)[None, :, :]
 
     def run(self, current_ratio: float) -> SimulationResult:
+        """Run one current point and return raw traces plus the final fields.
+
+        ``current_ratio`` means ``I/I_th``. / ``current_ratio`` 表示 ``I/I_th``。
+        """
         cfg = self.config
         rng = np.random.default_rng(cfg.numerics.seed + int(round(current_ratio * 1000)))
         n = cfg.numerics.points
@@ -234,13 +292,12 @@ class TimeDomainSolver:
             field = self._advect(field)
             self._add_spontaneous_noise(field, carrier, rng)
 
-            # Heun carrier step.  The optical CFL step is much smaller than the
-            # diffusion and recombination scales, so no separate implicit solve is needed.
-            rhs0 = self._carrier_rhs(carrier, field, current_density)
-            predicted = np.maximum(carrier + self.dt * rhs0, 0.0)
-            rhs1 = self._carrier_rhs(predicted, field, current_density)
-            dcarrier_dt = 0.5 * (rhs0 + rhs1)
-            carrier = np.maximum(carrier + self.dt * dcarrier_dt, 0.0)
+            # Explicit Heun carrier step, optionally subcycled.  No implicit
+            # solve is needed for the validated default CFL/grid combination.
+            # 显式 Heun 载流子步，可按配置细分子步；默认网格/CFL 已做稳定性检查。
+            carrier, dcarrier_dt = self._advance_carrier(
+                carrier, field, current_density
+            )
             field = self._field_local_half_step(field, carrier, dcarrier_dt)
 
             if not np.all(np.isfinite(carrier)) or not np.all(np.isfinite(field)):
@@ -266,6 +323,8 @@ class TimeDomainSolver:
                 "grid_points": n,
                 "dx_um": self.dx * 1e6,
                 "cfl": self.cfl,
+                "carrier_substeps": cfg.numerics.carrier_substeps,
+                "noise_model": "heuristic_grid_aware_seed_not_linewidth_calibrated",
                 "reference_carrier_cm3": self.reference_carrier * 1e-6,
             },
         )

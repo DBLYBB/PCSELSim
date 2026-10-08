@@ -1,5 +1,12 @@
 # 从零开始运行、理解和修改 PCSELSim
 
+> 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
+> 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
+
+> 2026-10-08校对提示：本文保留早期教程/推导和历史结果；最新修复、可信度与设计评价以
+> [本轮总审计](research_design_audit_20261008_zh.md)为准。旧“最佳”、精确阈值、单模及易加工
+> 判断未经最新收敛/工艺验证时不得直接引用，能带是近Γ局域片段，远场能量对评估视窗归一化。
+
 这份教程假定你没有 Python 项目经验。第一次不要改求解器代码，按照第 1-6 节依次完成即可。
 
 ## 0. 最先记住的两个文件
@@ -7,13 +14,13 @@
 在 PyCharm 中第一次运行，请打开并运行：
 
 ```text
-scripts/run_quick.py
+scripts/archive/legacy_20261008/run_quick.py
 ```
 
 它只进行短时间、低网格数的程序检查，通常比完整计算快很多。短测试成功后，再运行：
 
 ```text
-scripts/run_full.py
+scripts/archive/legacy_20261008/run_full.py
 ```
 
 它会运行论文基准的 4 个电流点和 10 ns 时间窗。不要一上来就运行完整计算，也不要直接运行
@@ -54,13 +61,24 @@ PCSELSim/
 
 你日常最常碰的只有三个位置：
 
-1. `scripts/run_quick.py` 或 `scripts/run_full.py`：启动计算。
+1. `scripts/archive/legacy_20261008/run_quick.py` 或 `scripts/archive/legacy_20261008/run_full.py`：启动计算。
 2. `configs/inoue2019.yaml`：修改物理与数值参数。
 3. `results/`：查看结果。
 
 如果你的目标是修改晶格、孔形和层结构，应运行
-`scripts/run_custom_semiconductor_pcsel.py`。它默认输出到
+`scripts/archive/legacy_20261008/run_custom_semiconductor_pcsel.py`。它默认输出到
 `results/custom_semiconductor_inoue2019`；完整第 08 步为 10 ns，第一次可先只运行 01–07。
+
+如果只想运行目前推荐的三角晶格三孔器件，不需要先跑全部历史优化，直接右键运行：
+
+```text
+scripts/archive/legacy_20261008/run_best_triangular_three_triangle_pcsel.py
+```
+
+重点先看 `02_device_overview.png`、`08_finite_modes.csv`、`10_best_mode_far_field.png` 和
+`11_threshold_current_audit.json`。Yb:YAG几何迁移使用
+`scripts/archive/legacy_20261008/run_geometry_derived_ybyag_pcsel.py`；其默认结果是“当前假设不可起振”的可行性审计，不是
+程序运行失败。
 
 ## 2. 第一次用 PyCharm 打开工程
 
@@ -178,7 +196,7 @@ results/quick/
 
 短测试和 `pytest` 都成功后：
 
-1. 打开 `scripts/run_full.py`。
+1. 打开 `scripts/archive/legacy_20261008/run_full.py`。
 2. 右键选择 **Run 'run_full'**。
 3. 它会依次计算 `1.05 Ith`、`1.4 Ith`、`2.8 Ith`、`4.2 Ith`。
 4. 完整计算明显比短测试慢。运行时不要关闭 PyCharm，也不要同时启动第二个相同任务。
@@ -556,7 +574,7 @@ current_ratios: [2.0]
 然后在 Terminal 运行：
 
 ```powershell
-python scripts\reproduce_inoue2019.py --config configs\my_first_test.yaml --output results\my_first_test
+python scripts\archive\legacy_20261008\reproduce_inoue2019.py --config configs\my_first_test.yaml --output results\my_first_test
 ```
 
 永远给新实验使用新的 `--output` 目录，否则会覆盖同名结果。
@@ -579,7 +597,7 @@ temporal_index_term: false
 运行：
 
 ```powershell
-python scripts\reproduce_inoue2019.py --config configs\inoue2019_no_index.yaml --output results\inoue2019_no_index
+python scripts\archive\legacy_20261008\reproduce_inoue2019.py --config configs\inoue2019_no_index.yaml --output results\inoue2019_no_index
 ```
 
 然后比较两个目录中的 `figure4_spectra.png`。当前校准矩阵还不能严格复现论文图 4 的 26 pm 双峰，
@@ -624,16 +642,20 @@ print(mode.confinement)
 当前时域求解器是方形晶格 Gamma 点四波模型。你可以改变方形晶格内的孔半径、椭圆长短轴、旋转角、
 双孔位移和材料参数；这些对应 `geometry.py` 和新的 `C` 矩阵。
 
-三角晶格不能只把 YAML 中的文字从 `square` 改成 `triangular`。三角晶格 Gamma 点通常需要六个基本
-传播波，并需要：
+三角晶格不能只把 YAML 中的文字从 `square` 改成 `triangular`。三角晶格 Gamma 点需要六个基本
+传播波。项目现在提供独立入口 `scripts/archive/legacy_20261008/run_custom_triangular_six_wave_pcsel.py`，已经完成：
 
 1. 把场从 4 分量扩展为 6 分量；
 2. 使用 6 个传播方向；
-3. 推导或导入 6x6 耦合矩阵；
-4. 重新定义开放边界与辐射场；
+3. 从几何和纵向模推导 6x6 `Cb+Cr+Ch`；
+4. 计算 Gamma 带边、局域能带、辐射常数和单晶胞矢量场；
 5. 增加与 Liang 三角晶格理论对应的回归测试。
 
-因此本项目已经把几何、耦合、材料与求解流程分开，便于以后扩展，但当前版本不把三角晶格标成已完成。
+六方向有限器件开放边界、整个器件包络和矢量远场已经由独立特征网格实现，支持圆形、正六边形和
+方形边界，并用多网格外推报告阈值；六波载流子时域仍未完成。`DEVICE_SHAPE` 控制边界类型。
+若要与 300 um 方形四波器件按相同尺寸和层栈比较，运行
+`scripts/archive/legacy_20261008/compare_square_triangular_equal_size.py`。操作和推导见 `docs/triangular_six_wave_zh.md` 与
+`docs/equal_size_square_triangular_comparison_zh.md`。
 
 ## 14. 迁移到全固态光子晶体微腔激光器
 
@@ -647,7 +669,15 @@ print(mode.confinement)
 基态吸收（如果存在）
 ```
 
-未来应新增统一的增益介质接口：
+工程现在有两个固态入口。`run_custom_ybyag_pcsel.py` 是手动耦合矩阵教学例；
+`run_geometry_derived_ybyag_pcsel.py` 则从晶格和层栈重新推导 TE0、四波耦合、有限器件、远场和
+准三能级阈值。后者是更应使用的研究入口，但仍是需要实验层栈和全矢量算法交叉验证的原型。
+
+默认 `500 um` 几何推导算例的阈值反转分数约为 `31.94`，而反转分数物理上不能超过 1，因此程序
+会报告“不可达”，不会输出虚构的激光功率。尺寸扫描提示几毫米口径可降低衍射损耗，但 `4 um`
+单程泵浦吸收仅约 `0.039%`，还必须引入多程泵浦、谐振增强或更厚的增益结构。
+
+长期仍建议新增统一的增益介质接口：
 
 ```text
 modal_gain(state)
@@ -663,7 +693,7 @@ RareEarthFourLevelMedium
 ```
 
 这样光场求解器不需要知道状态是“电子-空穴载流子”还是“稀土离子能级粒子数”。只修改 YAML 中的
-半导体参数，不足以完成全固态迁移。
+半导体参数，不足以完成全固态迁移。当前模型边界和运行步骤见 `docs/ybyag_model_zh.md`。
 
 ## 15. 常见错误及解决方法
 

@@ -78,6 +78,7 @@ STEPS = {
     "02_lattice": True,      # published three-circle motif / 主文三圆孔晶胞
     "03_k_space": True,      # square-lattice four-wave basis / 方形四波基底
     "04_layer_stack": True,  # effective reconstruction, not exact epitaxy / 有效层结构
+    "05_band_structure": True, # four-wave M-Gamma-X bands / 四波 M-Gamma-X 能带
     "05_linear_modes": True, # cold-cavity modes and convergence / 冷腔模与收敛
     "06_mode_atlas": True,   # ideal single-mode fields / 理想单模场
     "07_length_sweep": True, # finite-area trend / 有限尺寸趋势

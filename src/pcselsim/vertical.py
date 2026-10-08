@@ -55,6 +55,13 @@ class LayerStack:
         """
         if dz_nm <= 0.0:
             raise ValueError("dz_nm must be positive")
+        if wavelength_nm <= 0.0 or self.padding_um <= 0.0:
+            raise ValueError("wavelength_nm and padding_um must be positive")
+        if not self.layers or any(
+            layer.thickness_nm <= 0.0 or layer.refractive_index <= 0.0
+            for layer in self.layers
+        ) or min(self.top_index, self.bottom_index) <= 0.0:
+            raise ValueError("A layer stack requires positive thicknesses and indices")
         total_nm = 2.0 * self.padding_um * 1e3 + sum(x.thickness_nm for x in self.layers)
         points = int(np.ceil(total_nm / dz_nm)) + 1
         z_nm = np.linspace(0.0, total_nm, points)
@@ -81,7 +88,13 @@ class LayerStack:
         k0 = 2.0 * pi / (wavelength_nm * 1e-9)
         operator = second + diags((k0 * interior_index) ** 2, format="csr")
         beta2, vectors = eigsh(operator, k=1, which="LA")
-        beta = float(np.sqrt(max(beta2[0], 0.0)))
+        cladding_beta2 = (k0 * max(self.top_index, self.bottom_index)) ** 2
+        if beta2[0] <= cladding_beta2:
+            raise ValueError(
+                "The stack has no bound TE0 mode above both cladding light lines; "
+                "a finite-box cladding state cannot be used as a PCSEL guided mode"
+            )
+        beta = float(np.sqrt(beta2[0]))
         field = np.zeros(points, dtype=float)
         field[1:-1] = vectors[:, 0]
         integrate = getattr(np, "trapezoid", np.trapz)

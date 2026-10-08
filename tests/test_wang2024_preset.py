@@ -1,6 +1,6 @@
 import numpy as np
 
-from scripts import run_custom_wang2024_triple_lattice as wang
+from scripts.archive.legacy_20261008 import run_custom_wang2024_triple_lattice as wang
 
 
 def test_wang_structure_1_geometry_matches_main_text() -> None:

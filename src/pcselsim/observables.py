@@ -49,15 +49,30 @@ def radiated_power_W(
 
 
 def wavelength_spectrum(
-    signal: np.ndarray, dt_s: float, center_wavelength_nm: float, window: bool = True
+    signal: np.ndarray,
+    dt_s: float,
+    center_wavelength_nm: float,
+    window: bool = True,
+    remove_mean: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return normalized FFT power versus wavelength, sorted by wavelength.
 
     Use a sufficiently small saved-sample interval to avoid aliasing modal
-    detunings. / 保存采样间隔必须足够小，否则带边失谐会发生混叠。
+    detunings. A constant complex envelope is a real coherent line at the
+    reference optical frequency, so it must be retained by default. Mean
+    removal is an optional analysis operation, not the physical spectrum.
+    保存采样间隔必须足够小，否则带边失谐会发生混叠。恒定复包络对应参考光频
+    处的真实相干谱线，默认保留；减均值只作为可选数据分析操作。
     """
     signal = np.asarray(signal, dtype=np.complex128)
-    signal = signal - np.mean(signal)
+    if signal.ndim != 1 or signal.size < 2:
+        raise ValueError("signal must be a one-dimensional array with at least two samples")
+    if not np.isfinite(dt_s) or dt_s <= 0.0:
+        raise ValueError("dt_s must be finite and positive")
+    if not np.isfinite(center_wavelength_nm) or center_wavelength_nm <= 0.0:
+        raise ValueError("center_wavelength_nm must be finite and positive")
+    if remove_mean:
+        signal = signal - np.mean(signal)
     if window:
         signal = signal * np.hanning(signal.size)
     spectrum = np.abs(np.fft.fft(signal)) ** 2

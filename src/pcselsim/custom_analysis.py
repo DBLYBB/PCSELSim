@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import json
+import warnings
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
@@ -23,9 +24,10 @@ import numpy as np
 from matplotlib.colors import PowerNorm
 from matplotlib.patches import Circle, Ellipse as EllipsePatch, Polygon, Rectangle
 from scipy import sparse
-from scipy.sparse.linalg import eigs
+from scipy.sparse.linalg import ArpackNoConvergence, eigs
 
 from .coupling import band_edge_basis, validate_passive_coupling
+from .numerical_quality import extrapolate_grid_loss
 
 
 MODE_NAMES = ("A", "B", "C", "D")
@@ -108,11 +110,31 @@ class LinearMode:
     band_overlap: float
     radiation_x: np.ndarray | None = None
     radiation_y: np.ndarray | None = None
+    grid_alpha_per_m: float | None = None
+    extrapolation_uncertainty_per_m: float | None = None
+    extrapolation_status: str = "single_grid"
 
     @property
     def intensity(self) -> np.ndarray:
         value = np.sum(np.abs(self.fields) ** 2, axis=0)
         return value / max(float(value.max()), np.finfo(float).eps)
+
+
+@dataclass(frozen=True)
+class VectorFarFieldMetrics:
+    """Beam-quality metrics calculated from the physical complex vector FFP."""
+
+    center_to_peak: float
+    peak_offset_deg: float
+    centroid_offset_deg: float
+    ellipticity: float
+    encircled_power_0p5deg: float
+    encircled_power_1deg: float
+    full_rms_divergence_deg: float
+    evaluated_view_deg: float = 1.5
+    alias_free_axis_view_deg: float = 1.5
+    energy_normalization: str = "evaluated_angular_window"
+    moment_reference: str = "surface_normal_radial_second_moment"
 
 
 def ensure_square_four_wave(lattice: LatticeSpec) -> None:
@@ -190,6 +212,29 @@ def _roughness(fields: np.ndarray) -> float:
     return numerator / denominator
 
 
+def _rotate_four_wave_fields(fields: np.ndarray) -> np.ndarray:
+    """Active +90-degree rotation of both spatial coordinates and TE vectors.
+
+    In this basis Rx/Sx use Ey and Ry/Sy use Ex.  Rotating Ey gives -Ex,
+    therefore changing propagation direction alone misses two minus signs.
+    """
+    rotated = np.empty_like(fields)
+    # Array row index increases with physical y (plots use origin="lower").
+    # Therefore k=-1 gives the active physical counterclockwise rotation.
+    rotated[2] = -np.rot90(fields[0], k=-1)
+    rotated[3] = -np.rot90(fields[1], k=-1)
+    rotated[1] = np.rot90(fields[2], k=-1)
+    rotated[0] = np.rot90(fields[3], k=-1)
+    return rotated
+
+
+def _relative_eigen_residual(operator, fields: np.ndarray, value: complex) -> float:
+    vector = fields.ravel()
+    applied = operator @ vector
+    denominator = max(np.linalg.norm(applied), abs(value) * np.linalg.norm(vector), 1e-30)
+    return float(np.linalg.norm(applied - value * vector) / denominator)
+
+
 def analytic_mode_fields(n: int, mode_name: str, order: int = 0) -> np.ndarray:
     """Smooth single-lobed envelope in the shared A/B/C/D basis."""
     axis = np.linspace(-1.0, 1.0, n)
@@ -243,9 +288,30 @@ def solve_finite_modes(
     )
     results: dict[str, LinearMode] = {}
     for mode_index, (name, target) in enumerate(zip(MODE_NAMES, targets, strict=True)):
-        values, vectors = eigs(
-            operator, k=10, sigma=complex(target), which="LM", tol=1e-7, v0=v0
-        )
+        try:
+            values, vectors = eigs(
+                operator,
+                k=10,
+                sigma=complex(target),
+                which="LM",
+                tol=1e-7,
+                maxiter=8_000,
+                v0=v0,
+            )
+        except ArpackNoConvergence as error:
+            # Shift-invert occasionally returns 8--9 perfectly usable modes and
+            # then fails to converge the last requested vector.  Mode selection
+            # below only needs a small local cluster, so retain a sufficiently
+            # large partial cluster instead of discarding the complete geometry
+            # sweep.  Fewer than four vectors is too small to distinguish the
+            # four travelling-wave branches reliably and remains a hard error.
+            #
+            # ARPACK 偶尔只差最后一个向量未收敛；已收敛的局域谱仍满足后续的
+            # 带边重叠筛选。少于四个向量时则不接管，避免隐藏真正的数值失败。
+            if error.eigenvalues is None or len(error.eigenvalues) < 4:
+                raise
+            values = error.eigenvalues
+            vectors = error.eigenvectors
         candidates: list[tuple[float, int, float]] = []
         degenerate = np.flatnonzero(np.abs(targets-target) < 1e-7*max(abs(target), 1.0))
         for index, value in enumerate(values):
@@ -267,6 +333,8 @@ def solve_finite_modes(
             candidates.append((score, index, overlap))
         _, selected, overlap = min(candidates)
         value = values[selected]
+        if value.imag < -1e-8 * max(float(np.linalg.norm(coupling)), 1.0):
+            raise RuntimeError("A selected passive four-wave eigenmode has negative loss")
         fields = vectors[:, selected].reshape(4, n, n)
         fields /= np.sqrt(np.sum(np.abs(fields)**2))
         radiation_x = radiation_y = None
@@ -281,23 +349,29 @@ def solve_finite_modes(
             radiation_x=radiation_x,
             radiation_y=radiation_y,
         )
-    # Circular/square structures contain exactly degenerate C/D subspaces.
-    # ARPACK may return one arbitrary member repeatedly.  Generate its symmetry
-    # partner by a 90-degree rotation instead of selecting a transverse overtone.
+    # Degeneracy alone does not imply C4 symmetry.  Accept a rotated partner
+    # only if it independently satisfies the finite-device eigenproblem.
     if abs(targets[2]-targets[3]) < 1e-7*max(abs(targets[2]), 1.0):
         c_fields = results["C"].fields
-        rotated = np.empty_like(c_fields)
-        rotated[2] = np.rot90(c_fields[0])  # +x -> +y
-        rotated[3] = np.rot90(c_fields[1])  # -x -> -y
-        rotated[1] = np.rot90(c_fields[2])  # +y -> -x
-        rotated[0] = np.rot90(c_fields[3])  # -y -> +x
-        radiation_x = radiation_y = None
-        if radiation_builder is not None:
-            radiation_x, radiation_y = radiation_builder(rotated)
-        results["D"] = replace(
-            results["C"], name="D", fields=rotated,
-            radiation_x=radiation_x, radiation_y=radiation_y,
-        )
+        rotated = _rotate_four_wave_fields(c_fields)
+        value = results["C"].delta_per_m + 1j * results["C"].alpha_per_m
+        residual = _relative_eigen_residual(operator, rotated, value)
+        overlap = abs(np.vdot(c_fields.ravel(), rotated.ravel())) ** 2
+        if residual < 1e-6 and overlap < 0.999:
+            radiation_x = radiation_y = None
+            if radiation_builder is not None:
+                radiation_x, radiation_y = radiation_builder(rotated)
+            results["D"] = replace(
+                results["C"], name="D", fields=rotated,
+                radiation_x=radiation_x, radiation_y=radiation_y,
+            )
+        else:
+            warnings.warn(
+                "C/D band-edge degeneracy does not provide an independent C4 "
+                f"finite-mode partner (rotation residual={residual:.3g}, "
+                f"overlap={overlap:.3g}); retaining the directly solved D mode.",
+                RuntimeWarning, stacklevel=2,
+            )
     return results
 
 
@@ -317,7 +391,9 @@ def solve_finite_modes_converged(
 
     也就是说：表格中的频率/损耗使用 ``1/N -> 0`` 截距，图片中的场形来自最细网格。
     """
-    if len(grid_points) < 3 or tuple(sorted(grid_points)) != grid_points:
+    if len(grid_points) < 3 or any(
+        left >= right for left, right in zip(grid_points, grid_points[1:])
+    ):
         raise ValueError("grid_points must contain at least three increasing sizes")
     solutions = []
     for points in grid_points:
@@ -335,11 +411,25 @@ def solve_finite_modes_converged(
             item[name].delta_per_m+1j*item[name].alpha_per_m for item in solutions
         ])
         delta_limit = float(np.polyfit(inverse_grid, values.real, 1)[1])
-        alpha_limit = float(max(np.polyfit(inverse_grid, values.imag, 1)[1], 0.0))
+        alpha_limit, raw_alpha, uncertainty, status = extrapolate_grid_loss(
+            inverse_grid, values.imag
+        )
+        if status != "provisional":
+            warnings.warn(
+                f"Four-wave mode {name}: {status}; raw alpha intercept={raw_alpha:.6g} "
+                f"m^-1, grid sensitivity={uncertainty:.6g} m^-1. Refine the grid "
+                "before using this loss for design ranking.", RuntimeWarning, stacklevel=2,
+            )
         answer[name] = replace(
-            solutions[-1][name], delta_per_m=delta_limit, alpha_per_m=alpha_limit
+            solutions[-1][name], delta_per_m=delta_limit, alpha_per_m=alpha_limit,
+            grid_alpha_per_m=solutions[-1][name].alpha_per_m,
+            extrapolation_uncertainty_per_m=uncertainty,
+            extrapolation_status=status,
         )
         convergence[name] = values
+        convergence[f"{name}_alpha_diagnostics"] = np.asarray(
+            [raw_alpha, uncertainty, solutions[-1][name].alpha_per_m]
+        )
     convergence["inverse_grid"] = inverse_grid
     convergence["grid_points"] = np.asarray(grid_points, dtype=float)
     return answer, convergence
@@ -497,6 +587,73 @@ def vector_far_field_complex(
         angle_full[first:last],
         spectra[0][first:last, first:last]*obliquity[first:last, first:last],
         spectra[1][first:last, first:last]*obliquity[first:last, first:last],
+    )
+
+
+def vector_far_field_metrics(
+    spec: FourWaveOpticalSpec,
+    mode: LinearMode,
+    view_deg: float = 1.5,
+    padding: int = 8,
+) -> VectorFarFieldMetrics:
+    """Return beam metrics normalized to the evaluated angular window.
+
+    A coarse envelope grid restricts the available angular spectrum.  Neither
+    FFT padding nor selecting a wider view recovers unsampled high-angle power.
+    """
+    if mode.radiation_x is None or mode.radiation_y is None:
+        raise ValueError("a geometry-derived radiation field is required")
+    angle, field_x, field_y = vector_far_field_complex(
+        mode.radiation_x,
+        mode.radiation_y,
+        spec.wavelength_nm,
+        spec.domain_um,
+        view_deg=view_deg,
+        padding=padding,
+    )
+    power = np.abs(field_x) ** 2 + np.abs(field_y) ** 2
+    power /= max(float(power.max()), np.finfo(float).eps)
+    xx, yy = np.meshgrid(angle, angle)
+    total = max(float(power.sum()), np.finfo(float).eps)
+    center = len(angle) // 2
+    peak_row, peak_column = np.unravel_index(int(np.argmax(power)), power.shape)
+    peak_offset = float(np.hypot(xx[peak_row, peak_column], yy[peak_row, peak_column]))
+    centroid_x = float(np.sum(xx * power) / total)
+    centroid_y = float(np.sum(yy * power) / total)
+    centered_x = xx - centroid_x
+    centered_y = yy - centroid_y
+    covariance = np.asarray((
+        (
+            float(np.sum(centered_x * centered_x * power) / total),
+            float(np.sum(centered_x * centered_y * power) / total),
+        ),
+        (
+            float(np.sum(centered_x * centered_y * power) / total),
+            float(np.sum(centered_y * centered_y * power) / total),
+        ),
+    ))
+    variances = np.maximum(np.linalg.eigvalsh(covariance), 0.0)
+    ellipticity = float(np.sqrt(
+        variances[-1] / max(variances[0], np.finfo(float).eps)
+    ))
+    divergence = 2.0 * np.sqrt(
+        float(np.sum((xx * xx + yy * yy) * power) / total)
+    )
+    radius = np.hypot(xx, yy)
+    encircled_0p5 = float(np.sum(power[radius <= 0.5]) / total)
+    encircled = float(np.sum(power[radius <= 1.0]) / total)
+    return VectorFarFieldMetrics(
+        center_to_peak=float(power[center, center]),
+        peak_offset_deg=peak_offset,
+        centroid_offset_deg=float(np.hypot(centroid_x, centroid_y)),
+        ellipticity=ellipticity,
+        encircled_power_0p5deg=encircled_0p5,
+        encircled_power_1deg=encircled,
+        full_rms_divergence_deg=divergence,
+        evaluated_view_deg=float(np.max(np.abs(angle))),
+        alias_free_axis_view_deg=float(np.rad2deg(np.arctan(
+            spec.wavelength_nm * 1e-9 / (2.0 * spec.domain_um * 1e-6 / spec.grid_points)
+        ))),
     )
 
 
@@ -719,7 +876,7 @@ def plot_mode_atlas(lattice: LatticeSpec, spec: FourWaveOpticalSpec,
         axes[row, 2].imshow(ffp, origin="lower", cmap="hot",
                             norm=PowerNorm(gamma=0.65, vmin=0, vmax=1),
                             extent=(angle[0], angle[-1], angle[0], angle[-1]))
-        axes[row, 2].set(title=f"{name}: {far_field_label}, full RMS={divergence:.2f} deg",
+        axes[row, 2].set(title=f"{name}: {far_field_label}, window RMS diameter={divergence:.2f} deg",
                          xlabel="theta_x (deg)", ylabel="theta_y (deg)")
     fig.suptitle("A/B/C/D finite-area modes: envelope, unit cell and far field")
     fig.tight_layout(rect=(0, 0, 1, 0.97))

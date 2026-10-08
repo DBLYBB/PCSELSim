@@ -1,11 +1,18 @@
 # Wang 2024 三晶格预设：运行方法、对照结果与可信边界
 
+> 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
+> 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
+
+> 2026-10-08校对提示：本文保留早期教程/推导和历史结果；最新修复、可信度与设计评价以
+> [本轮总审计](research_design_audit_20261008_zh.md)为准。旧“最佳”、精确阈值、单模及易加工
+> 判断未经最新收敛/工艺验证时不得直接引用，能带是近Γ局域片段，远场能量对评估视窗归一化。
+
 ## 直接运行
 
-在 PyCharm 中右键 `scripts/run_custom_wang2024_triple_lattice.py`，选择 **Run**。命令行等价命令：
+在 PyCharm 中右键 `scripts/archive/legacy_20261008/run_custom_wang2024_triple_lattice.py`，选择 **Run**。命令行等价命令：
 
 ```powershell
-python scripts\run_custom_wang2024_triple_lattice.py
+python scripts\archive\legacy_20261008\run_custom_wang2024_triple_lattice.py
 ```
 
 结果只写入 `results/custom_semiconductor_wang2024_triple_lattice`，不会覆盖
@@ -13,7 +20,7 @@ python scripts\run_custom_wang2024_triple_lattice.py
 关闭 08 时域。若只想重画晶格和模式，可运行：
 
 ```powershell
-python scripts\run_custom_wang2024_triple_lattice.py --only 02_lattice 05_linear_modes 06_mode_atlas
+python scripts\archive\legacy_20261008\run_custom_wang2024_triple_lattice.py --only 02_lattice 05_linear_modes 06_mode_atlas
 ```
 
 ## 哪些参数直接来自论文主文

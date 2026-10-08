@@ -17,7 +17,16 @@ from pathlib import Path
 
 def bootstrap_project() -> Path:
     """Add ``src`` to sys.path, switch to the repository root, and return it."""
-    project_root = Path(__file__).resolve().parents[1]
+    # Archive scripts live several levels deeper; locate the actual project,
+    # not a fixed parents[1]. / 归档后层级变化，按标志文件找根目录。
+    project_root = next(
+        (parent for parent in Path(__file__).resolve().parents
+         if (parent / "src" / "pcselsim").is_dir()
+         and (parent / "configs" / "inoue2019.yaml").is_file()),
+        None,
+    )
+    if project_root is None:
+        raise RuntimeError("PCSELSim project root could not be located")
     source_root = project_root / "src"
     config_path = project_root / "configs" / "inoue2019.yaml"
     if not source_root.is_dir():
@@ -27,6 +36,8 @@ def bootstrap_project() -> Path:
     source_text = str(source_root)
     if source_text not in sys.path:
         sys.path.insert(0, source_text)
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
     os.chdir(project_root)
     return project_root
 

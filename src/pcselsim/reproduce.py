@@ -32,7 +32,12 @@ def reproduce(config: SimulationConfig, output_dir: str | Path) -> list[Simulati
         save_result(result, output / f"{tag}.npz")
         plot_transient(result, output / f"{tag}_transient.png")
         plot_spatial(result, output / f"{tag}_spatial.png")
-    plot_spectra(results, output / "figure4_spectra.png", config.reproduction.spectrum_window_ns)
+    plot_spectra(
+        results,
+        output / "figure4_spectra.png",
+        config.reproduction.spectrum_window_ns,
+        center_wavelength_nm=config.optical.wavelength_nm,
+    )
     with (output / "summary.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
         writer.writerow(["I_over_Ith", "final_center_N_cm-3", "final_power_W", "max_power_W"])

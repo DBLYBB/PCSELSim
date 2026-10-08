@@ -44,7 +44,7 @@ class PolygonInclusion:
             raise ValueError("A polygon inclusion needs at least three vertices")
 
 
-def _polygon_fourier(
+def polygon_fourier_integral(
     vertices: tuple[tuple[float, float], ...], m: int, n: int
 ) -> complex:
     """Return integral_P exp(i 2 pi (m x+n y)) dxdy for a polygon P."""
@@ -107,7 +107,7 @@ class SquareLatticeCell:
                 form = 1.0 if rho == 0.0 else 2.0 * j1(rho) / rho
                 shape_transform = area*form*np.exp(1j*np.dot(k, inclusion.center))
             else:
-                shape_transform = _polygon_fourier(inclusion.vertices, m, n)
+                shape_transform = polygon_fourier_integral(inclusion.vertices, m, n)
             value += (
                 inclusion.epsilon - self.background_epsilon
             ) * shape_transform

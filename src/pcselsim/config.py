@@ -12,6 +12,7 @@ are rejected so spelling errors cannot silently change a simulation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+import math
 from pathlib import Path
 from typing import Any
 
@@ -147,14 +148,51 @@ def load_config(path: str | Path) -> SimulationConfig:
 
 
 def validate_config(config: SimulationConfig) -> None:
+    """Reject nonphysical units/signs before they reach the time integrator."""
+    positive = {
+        "optical.lattice_constant_nm": config.optical.lattice_constant_nm,
+        "optical.wavelength_nm": config.optical.wavelength_nm,
+        "optical.group_index": config.optical.group_index,
+        "optical.effective_index": config.optical.effective_index,
+        "optical.active_index": config.optical.active_index,
+        "carrier.maximum_gain_cm": config.carrier.maximum_gain_cm,
+        "carrier.transparency_density_cm3": config.carrier.transparency_density_cm3,
+        "carrier.lifetime_ns": config.carrier.lifetime_ns,
+        "carrier.active_thickness_nm": config.carrier.active_thickness_nm,
+        "device.domain_um": config.device.domain_um,
+        "device.electrode_um": config.device.electrode_um,
+        "device.threshold_current_A": config.device.threshold_current_A,
+        "numerics.end_time_ns": config.numerics.end_time_ns,
+        "numerics.sample_interval_ps": config.numerics.sample_interval_ps,
+        "reproduction.spectrum_window_ns": config.reproduction.spectrum_window_ns,
+    }
+    for name, value in positive.items():
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError(f"{name} must be finite and positive")
+    nonnegative = {
+        "optical.internal_loss_cm": config.optical.internal_loss_cm,
+        "carrier.diffusion_cm2_s": config.carrier.diffusion_cm2_s,
+        "device.current_spread_um": config.device.current_spread_um,
+    }
+    for name, value in nonnegative.items():
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{name} must be finite and nonnegative")
+    if not 0.0 < config.optical.confinement_factor <= 1.0:
+        raise ValueError("optical.confinement_factor must be in (0, 1]")
+    if not math.isfinite(config.optical.dn_dN_cm3):
+        raise ValueError("optical.dn_dN_cm3 must be finite")
+    if not math.isfinite(config.carrier.zero_carrier_gain_cm) or config.carrier.zero_carrier_gain_cm >= 0.0:
+        raise ValueError("carrier.zero_carrier_gain_cm must be finite and negative")
+    if not 0.0 <= config.carrier.spontaneous_emission_factor <= 1.0:
+        raise ValueError("carrier.spontaneous_emission_factor must be in [0, 1]")
     n = config.numerics.points
-    if n < 9 or n % 2 == 0:
+    if not isinstance(n, int) or n < 9 or n % 2 == 0:
         raise ValueError("numerics.points must be an odd integer >= 9")
     if config.device.electrode_um > config.device.domain_um:
         raise ValueError("electrode_um cannot exceed domain_um")
     if config.device.electrode_shape not in {"square", "circle"}:
         raise ValueError("device.electrode_shape must be 'square' or 'circle'")
-    if config.numerics.carrier_substeps < 1:
+    if not isinstance(config.numerics.carrier_substeps, int) or config.numerics.carrier_substeps < 1:
         raise ValueError("carrier_substeps must be >= 1")
     if not 0.0 < config.numerics.cfl <= 1.0:
         raise ValueError("numerics.cfl must be in (0, 1]")
@@ -162,4 +200,25 @@ def validate_config(config: SimulationConfig) -> None:
         raise ValueError("modal_detuning_cm must contain A/B/C/D values")
     if len(config.optical.modal_radiation_loss_cm) != 4:
         raise ValueError("modal_radiation_loss_cm must contain A/B/C/D values")
+    if not all(math.isfinite(value) for value in config.optical.modal_detuning_cm):
+        raise ValueError("modal_detuning_cm must be finite")
+    if not all(math.isfinite(value) and value >= 0.0 for value in config.optical.modal_radiation_loss_cm):
+        raise ValueError("modal_radiation_loss_cm must be finite and nonnegative")
+    if not all(math.isfinite(value) and value >= 0.0 for value in config.reproduction.current_ratios):
+        raise ValueError("current_ratios must be finite and nonnegative")
+    # Heun is explicit. The largest eigenvalue of the 2-D five-point diffusion
+    # stencil gives D*dt_sub/dx^2 <= 1/4. Advection CFL alone is insufficient.
+    # Heun 为显式法；二维扩散限制还需 D*dt_sub/dx^2 <= 1/4。
+    from .constants import c
+    spacing_m = config.device.domain_um * 1e-6 / (n - 1)
+    optical_step_s = config.numerics.cfl * spacing_m * config.optical.group_index / c
+    diffusion_cfl = (
+        config.carrier.diffusion_cm2_s * 1e-4 * optical_step_s
+        / config.numerics.carrier_substeps / spacing_m**2
+    )
+    if diffusion_cfl > 0.25:
+        raise ValueError(
+            "Explicit carrier diffusion is unstable: D*dt_sub/dx^2="
+            f"{diffusion_cfl:.3g} > 0.25; increase carrier_substeps or reduce cfl"
+        )
 

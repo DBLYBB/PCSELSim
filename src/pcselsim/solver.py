@@ -1,12 +1,13 @@
 """Time-domain four-wave coupled-wave and carrier solver.
 
-English: this is the production implementation of Inoue Eqs. (8), (10) and
-(11), with Liang Eq. (4.22) open incoming-wave boundaries.  Strang splitting
+English: this implements Inoue Eqs. (8), (10) and (11), including the missing
+``i`` corrected by PRB 99, 169904 (2019), DOI 10.1103/PhysRevB.99.169904,
+with Liang Eq. (4.22) open incoming-wave boundaries. Strang splitting
 separates local coupling/gain from propagation; Lax--Wendroff advances the four
 directed envelopes; Heun advances the carrier reservoir.
 
 中文：这是 Inoue 式 (8)、(10)、(11) 的时域求解核心，并采用 Liang 式 (4.22)
-的开放入射边界。Strang 分裂处理局域耦合与传播，Lax--Wendroff 推进四个行波
+的开放入射边界；式 (8) 耦合项按官方勘误补上 ``i``。Strang 分裂处理局域耦合与传播，Lax--Wendroff 推进四个行波
 包络，Heun 法推进载流子。所有内部长度、时间和密度均为 SI 单位。
 """
 
@@ -17,7 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.linalg import expm
 
-from .config import SimulationConfig
+from .config import SimulationConfig, validate_config
 from .constants import c, e, pi
 from .coupling import calibrated_coupling_matrix, validate_passive_coupling
 from .injection import electrode_area_m2, electrode_profile
@@ -63,6 +64,7 @@ class TimeDomainSolver:
         coupling_m: np.ndarray | None = None,
         signal_projection: np.ndarray | None = None,
     ):
+        validate_config(config)
         self.config = config
         n = config.numerics.points
         half = 0.5 * config.device.domain_um * 1e-6
@@ -191,8 +193,10 @@ class TimeDomainSolver:
         # Inoue 式 (10)：注入 - 寿命复合 - 受激复合 + 横向扩散。
         photons = photon_density_m3(field, cfg.carrier, cfg.optical)
         stimulated = self.vg * active_gain_m(carrier, cfg.carrier) * photons
-        # Absorptive gain must not create carriers in this phenomenological equation.
-        stimulated = np.maximum(stimulated, 0.0)
+        # Inoue Eq. (10) retains the sign of the material gain: below
+        # transparency, absorbed photons create electron-hole pairs. Clipping
+        # negative gain would break this carrier/field energy exchange.
+        # 式 (10) 保留增益符号：透明点以下的吸收产生电子-空穴对，不能截掉负值。
         return (
             current_density / (e * thickness)
             - carrier / tau
@@ -245,7 +249,11 @@ class TimeDomainSolver:
         conversion = photon_density_m3(unit_field, cfg.carrier, cfg.optical)
         variance = np.maximum(spontaneous_photons / conversion, 0.0)
         noise = rng.normal(size=field.shape) + 1j * rng.normal(size=field.shape)
-        field += noise * np.sqrt(variance / 8.0)[None, :, :]
+        # ``conversion`` already includes all four unit-amplitude waves.
+        # E|normal+i normal|^2=2, hence division by 2 injects the requested
+        # photon density in expectation. Division by 8 would under-inject by 4.
+        # conversion 已计入四波，复高斯模方期望为 2；无需再除四波数量。
+        field += noise * np.sqrt(variance / 2.0)[None, :, :]
 
     def run(self, current_ratio: float) -> SimulationResult:
         """Run one current point and return raw traces plus the final fields.

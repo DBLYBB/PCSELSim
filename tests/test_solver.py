@@ -4,6 +4,7 @@ import numpy as np
 
 from pcselsim.config import NumericsConfig, ReproductionConfig, SimulationConfig
 from pcselsim.solver import TimeDomainSolver
+from pcselsim.observables import photon_density_m3
 
 
 def test_short_run_is_finite() -> None:
@@ -49,4 +50,22 @@ def test_carrier_substeps_are_used_and_reported() -> None:
     result = TimeDomainSolver(config).run(1.05)
     assert result.metadata["carrier_substeps"] == 3
     assert np.all(np.isfinite(result.final_carrier_cm3))
+
+
+def test_absorption_creates_carriers_below_transparency() -> None:
+    config = SimulationConfig(numerics=NumericsConfig(points=9, noise=False))
+    solver = TimeDomainSolver(config)
+    carrier = np.zeros((9, 9))
+    field = np.full((4, 9, 9), 1.0, dtype=complex)
+    assert np.all(solver._carrier_rhs(carrier, field, np.zeros_like(carrier)) > 0.0)
+
+
+def test_noise_injects_configured_photon_density_in_expectation() -> None:
+    config = SimulationConfig(numerics=NumericsConfig(points=101, noise=True))
+    solver = TimeDomainSolver(config)
+    carrier = np.full((101, 101), 2e24)
+    field = np.zeros((4, 101, 101), complex)
+    solver._add_spontaneous_noise(field, carrier, np.random.default_rng(13))
+    expected = config.carrier.spontaneous_emission_factor * carrier / (config.carrier.lifetime_ns * 1e-9) * solver.dt
+    assert np.isclose(photon_density_m3(field, config.carrier, config.optical).mean(), expected.mean(), rtol=0.02)
 

@@ -260,12 +260,16 @@ def ybyag_rate_rhs(state: np.ndarray, config: YbYAGMediumConfig,
 
 def ybyag_energy_budget(state: np.ndarray, config: YbYAGMediumConfig,
                         total_loss_per_m: np.ndarray,
-                        output_loss_per_m: np.ndarray) -> dict[str, float]:
+                        output_loss_per_m: np.ndarray) -> dict[str, float | str | bool]:
     """Instantaneous count/energy closure for the local uniform pump model.
 
     Excitation energy is represented by h*nu_l. The pump quantum defect is
     reported separately. Pump transport and thermal escape remain external.
     """
+    state = np.asarray(state, dtype=float)
+    if (state.ndim != 1 or state.size < 2 or not np.isfinite(state).all()
+            or not 0.0 <= state[0] <= 1.0 or np.any(state[1:] < 0.0)):
+        raise ValueError("An energy audit requires a physical, finite accepted population state")
     values = _medium_si(config)
     fraction = float(state[0])
     photons = np.asarray(state[1:])
@@ -292,8 +296,17 @@ def ybyag_energy_budget(state: np.ndarray, config: YbYAGMediumConfig,
     stored_energy_rate = values["laser_energy"] * values["volume"] * (
         values["nt"] * derivatives[0] + np.sum(derivatives[1:])
     )
+    reference_face = config.pump_intensity_W_cm2 * config.pumped_area_um2 * 1e-8
     return {
-        "incident_pump_power_W": config.pump_intensity_W_cm2 * config.pumped_area_um2 * 1e-8,
+        # Backward-compatible key: this uniform LOCAL pump field is not a
+        # boundary-transport solution. For optically thick samples its local
+        # supply can exceed I*A; the spatial propagation model must be used.
+        # 中文：旧键只表示局部I乘参考面积，不能当真实外部入射泵浦功率。
+        "incident_pump_power_W": reference_face,
+        "reference_local_pump_face_power_W": reference_face,
+        "small_signal_pump_optical_depth": values["nt"]*values["sigma_ap"]*config.gain_thickness_um*1e-6,
+        "local_absorbed_exceeds_reference_face_power": bool(absorbed > reference_face*(1+1e-12)),
+        "pump_power_interpretation": "Unattenuated local intensity reservoir; I*A is a reference face power, not solved external/absorbed pump power",
         "net_local_absorbed_pump_power_W": absorbed,
         "pump_quantum_defect_heat_W": absorbed - excitation_source,
         "fluorescence_outside_retained_modes_W": fluorescence,
@@ -340,6 +353,14 @@ def solve_ybyag_rates(config: YbYAGMediumConfig, mode_names: tuple[str, ...],
     )
     if not solution.success:
         raise RuntimeError(f"Yb:YAG rate integration failed: {solution.message}")
+    # Clipping is permitted only for solver-scale roundoff. Never disguise an
+    # invalid accepted integration by replacing it with a physical-looking plot.
+    # 中文：先检查原始已接受解；实质负粒子数或越界反转必须报错，不能靠裁剪隐藏。
+    raw_fraction, raw_photons = solution.y[0], solution.y[1:]
+    photon_roundoff = 10.0*(1.0+1e-10*np.max(np.abs(raw_photons),axis=1,keepdims=True))
+    if (not np.isfinite(solution.y).all() or raw_fraction.min() < -1e-7
+            or raw_fraction.max() > 1.0+1e-7 or np.any(raw_photons < -photon_roundoff)):
+        raise RuntimeError("Yb:YAG accepted integration left the physical population domain; clipping is not a repair")
     fraction = np.clip(solution.y[0], 0.0, 1.0)
     photons = np.maximum(solution.y[1:], 0.0)
     power = (

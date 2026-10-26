@@ -23,7 +23,7 @@ if __name__ == "__main__":
                 "--config",
                 str(PROJECT_ROOT / "configs" / "inoue2019.yaml"),
                 "--output",
-                str(PROJECT_ROOT / "results" / "inoue2019"),
+                str(PROJECT_ROOT / "results" / "current" / "legacy" / "inoue2019"),
             ]
         )
     )

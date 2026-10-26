@@ -11,9 +11,9 @@ CWT, not the later generalized Green function for tilted walls/back reflectors.
 
 中文说明：本模块执行“晶胞 -> 介电常数 Fourier 系数 -> 纵向 TE0 ->
 ``C1D + Crad + C2D``”的物理推导。四个基本波固定为 ``Rx,Sx,Ry,Sy``。
-当前 Green 函数忽略上下界面反射；为消除浮点误差造成的微小负辐射损耗，代码会
-将 ``Crad`` 的反厄米部分投影到半正定锥，并把修正量写入结果审计文件。较大的
-修正意味着近似或参数需要重新检查，而不是可以忽略的数值细节。
+当前 Green 函数忽略上下界面反射；只允许舍入量级的 Hermitian/被动性修正，
+并把辐射修正量写入审计。超出浮点舍入尺度的非 Hermitian 项或负损耗会直接
+拒绝，不能借助投影将不物理的矩阵变成可接受结果。
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ import numpy as np
 from .constants import pi
 from .coupling import validate_passive_coupling
 from .geometry import SquareLatticeCell
-from .vertical import LayerStack, VerticalMode
+from .vertical import LayerStack, VerticalMode, sample_vertical_interval
 
 
 BASIC_ORDERS: tuple[tuple[int, int], ...] = (
@@ -134,12 +134,22 @@ def _pc_layer_coordinates(
         cursor_nm = stop_nm
     if not ranges:
         raise ValueError(f"PC layer {pc_layer_name!r} was not found in the vertical stack")
-    mask = np.zeros(z_nm.shape, dtype=bool)
+    coordinates = []
+    fields = []
+    weights = []
     for start_nm, stop_nm in ranges:
-        mask |= (z_nm >= start_nm) & (z_nm <= stop_nm)
-    z_m = z_nm[mask]*1e-9
-    field = np.asarray(mode.field[mask], dtype=np.complex128)
-    return z_m, field, _trapezoid_weights(z_m)
+        layer_z, layer_field = sample_vertical_interval(
+            z_nm*1e-9, mode.field, start_nm*1e-9, stop_nm*1e-9
+        )
+        coordinates.append(layer_z)
+        fields.append(layer_field)
+        # Separate repeated PC layers must not integrate across intervening gaps.
+        weights.append(_trapezoid_weights(layer_z))
+    return (
+        np.concatenate(coordinates),
+        np.asarray(np.concatenate(fields), dtype=np.complex128),
+        np.concatenate(weights),
+    )
 
 
 def solve_bragg_vertical_mode(
@@ -175,6 +185,7 @@ def _double_green_integral(
     vertical_wavenumber_m: complex,
     radiative: bool,
 ) -> complex:
+    """Integrate the free-host Green response / 自由宿主核双重积分，坐标单位为 m。"""
     distance = np.abs(z_m[:, None]-z_m[None, :])
     if radiative:
         kernel = (
@@ -205,16 +216,38 @@ def _surface_green_integral(
     return complex(np.sum(kernel*field*weights_m))
 
 
-def _project_radiation_passive(matrix: np.ndarray) -> tuple[np.ndarray, float]:
-    """Remove non-physical negative radiation eigenvalues.
+def _roundoff_hermitian(matrix: np.ndarray, *, label: str) -> np.ndarray:
+    """Symmetrize only roundoff in a theoretically Hermitian closed channel.
 
-    The returned correction is audited.  A correction comparable to a physical
-    loss is a model warning, not harmless cleanup. / 返回修正量会写入审计文件；若它与
-    物理损耗同量级，应重新检查 Green 函数近似和参数。
+    A finite cutoff with conjugate Fourier pairs preserves Hermiticity for
+    real media. A substantial skew is an error, not additional radiative loss.
+    实介质封闭通道应为 Hermitian；实质误差须报错，不可由对称化消除。
     """
+    matrix = np.asarray(matrix, dtype=np.complex128)
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1] or not np.isfinite(matrix).all():
+        raise ValueError(f"{label} must be a finite square matrix")
+    scale = max(float(np.linalg.norm(matrix, 2)), np.finfo(float).tiny)
+    skew = float(np.linalg.norm(matrix-matrix.conj().T, 2))
+    if skew > 256*np.finfo(float).eps*scale:
+        raise ValueError(f"{label} has non-roundoff anti-Hermitian part ({skew:g}/m); refusing to hide it by symmetrization")
+    return 0.5*(matrix+matrix.conj().T)
+
+
+def _project_radiation_passive(matrix: np.ndarray) -> tuple[np.ndarray, float]:
+    """Remove only roundoff-negative radiation eigenvalues; reject real gain.
+
+    The correction remains audited. A substantial negative eigenvalue cannot
+    be repaired by PSD clipping / 只裁去舍入负值，实质负辐射损耗直接拒绝。
+    """
+    matrix = np.asarray(matrix, dtype=np.complex128)
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1] or not np.isfinite(matrix).all():
+        raise ValueError("Radiation coupling must be a finite square matrix")
     hermitian = 0.5*(matrix+matrix.conj().T)
     radiation = (matrix-matrix.conj().T)/(2j)
     values, vectors = np.linalg.eigh(radiation)
+    tolerance = 256*np.finfo(float).eps*max(float(np.linalg.norm(matrix, 2)), np.finfo(float).tiny)
+    if values.min() < -tolerance:
+        raise ValueError(f"Radiation has non-roundoff negative loss ({values.min():g}/m); a PSD projection cannot repair the optical model")
     clipped = np.maximum(values, 0.0)
     correction = float(np.max(np.abs(clipped-values)))
     radiation_psd = (vectors*clipped) @ vectors.conj().T
@@ -228,6 +261,8 @@ def build_geometry_coupling(
     lattice_constant_nm: float,
     wavelength_guess_nm: float,
     settings: ThreeDCWTSettings = ThreeDCWTSettings(),
+    *,
+    fixed_wavelength_nm: float | None = None,
 ) -> GeometryCouplingResult:
     """Build ``C=C1D+Crad+C2D`` from geometry and the vertical mode.
 
@@ -241,9 +276,18 @@ def build_geometry_coupling(
     if average_epsilon <= 0.0:
         raise ValueError("The unit-cell average dielectric constant must be positive")
 
-    wavelength_nm, vertical_mode = solve_bragg_vertical_mode(
-        stack, lattice_constant_nm, wavelength_guess_nm, settings
-    )
+    # A frequency-dependent cavity problem must keep the physical period fixed.
+    # In that case wavelength is an independent argument, not a Bragg guess.
+    # 实频闭合时波长是独立变量，周期保持不变；默认分支才迭代无扰动 Bragg 条件。
+    if fixed_wavelength_nm is None:
+        wavelength_nm, vertical_mode = solve_bragg_vertical_mode(
+            stack, lattice_constant_nm, wavelength_guess_nm, settings
+        )
+    else:
+        wavelength_nm = float(fixed_wavelength_nm)
+        if not np.isfinite(wavelength_nm) or wavelength_nm <= 0.0:
+            raise ValueError("fixed_wavelength_nm must be finite and positive")
+        vertical_mode = stack.solve_te0(wavelength_nm, dz_nm=settings.vertical_step_nm)
     z_m, theta, weights_m = _pc_layer_coordinates(stack, vertical_mode, pc_layer_name)
     pc_confinement = float(np.sum(np.abs(theta)**2*weights_m))
     integral_inverse_epsilon = pc_confinement/average_epsilon
@@ -274,7 +318,7 @@ def build_geometry_coupling(
     c1d[1, 0] = prefactor_1d*xi(-2, 0)
     c1d[2, 3] = prefactor_1d*xi(0, 2)
     c1d[3, 2] = prefactor_1d*xi(0, -2)
-    c1d = 0.5*(c1d+c1d.conj().T)
+    c1d = _roundoff_hermitian(c1d, label="C1D")
 
     beta_radiative = complex(k0*pc_index)
     radiation_integral = _double_green_integral(
@@ -300,6 +344,8 @@ def build_geometry_coupling(
                 prefactor_rad*xi(p, q)*xi(-r, -s)*radiation_integral
             )
     crad, passivity_correction = _project_radiation_passive(crad)
+    # Audit this correction; the reflected-stack backend rebuilds radiation itself.
+    # 此修正量必须保留审计；含反射膜系的后端会用实际分层核重建辐射项。
 
     c2d = np.zeros((4, 4), dtype=np.complex128)
     # Response matrices at the PC-layer centre are retained for a genuine
@@ -327,6 +373,11 @@ def build_geometry_coupling(
         ),
     }
     order = settings.truncation_order
+    # In a planar host the longitudinal Green response depends on |G| only.
+    # Keep this cache local to one geometry/frequency/vertical field; changing
+    # wavelength or layer stack must never reuse another calculation's kernel.
+    # 缓存只在本次构建有效；同一径向阶可复用核，跨波长或膜系不可复用。
+    radial_green: dict[int, tuple[complex, complex]] = {}
     for m in range(-order, order+1):
         for n in range(-order, order+1):
             squared_order = m*m+n*n
@@ -337,14 +388,17 @@ def build_geometry_coupling(
                 raise ValueError(
                     f"High-order wave ({m},{n}) is not evanescent; increase model scope"
                 )
-            green_integral = _double_green_integral(
-                z_m, theta, weights_m, beta_high, radiative=False
-            )
-            probe_kernel = (
-                1.0/(2.0*beta_high)
-                * np.exp(-beta_high*np.abs(z_probe-z_m))
-            )
-            probe_green = complex(np.sum(probe_kernel*theta*weights_m))
+            if squared_order not in radial_green:
+                green_integral = _double_green_integral(
+                    z_m, theta, weights_m, beta_high, radiative=False
+                )
+                probe_kernel = (
+                    1.0/(2.0*beta_high)
+                    * np.exp(-beta_high*np.abs(z_probe-z_m))
+                )
+                probe_green = complex(np.sum(probe_kernel*theta*weights_m))
+                radial_green[squared_order] = green_integral, probe_green
+            green_integral, probe_green = radial_green[squared_order]
             mu = np.empty(4, dtype=np.complex128)
             nu = np.empty(4, dtype=np.complex128)
             mu_probe = np.empty(4, dtype=np.complex128)
@@ -382,7 +436,7 @@ def build_geometry_coupling(
                 c2d[row] += (
                     -k0**2/(2.0*beta0)*xi(p-m, q-n)*sigma
                 )
-    c2d = 0.5*(c2d+c2d.conj().T)
+    c2d = _roundoff_hermitian(c2d, label="C2D")
 
     coupling = c1d+crad+c2d
     validate_passive_coupling(coupling, atol=max(1e-8, 1e-10*np.linalg.norm(coupling)))

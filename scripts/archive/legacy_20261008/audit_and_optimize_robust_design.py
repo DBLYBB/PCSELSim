@@ -46,7 +46,7 @@ else:
 
 
 # PARAMETERS / 参数区：工艺值是明确的假设档位，需替换为你的加工平台规则。
-OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "robust_design_20261008"
+OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "current" / "legacy" / "robust_design_20261008"
 PROCESS_TIERS = (
     FabricationRules("fine_ebeam_assumption", 40, 50, 3, 3, 5),
     FabricationRules("research_ebeam_assumption", 60, 65, 3, 3, 10),

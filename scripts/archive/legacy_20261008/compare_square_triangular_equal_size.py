@@ -115,7 +115,7 @@ else:
 # ===========================================================================
 # COMPARISON PANEL / 公平对比参数区
 # ===========================================================================
-OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "equal_size_square_triangular_comparison"
+OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "current" / "legacy" / "equal_size_square_triangular_comparison"
 BOUNDING_SIZE_UM = 300.0
 HALF_SIZE_UM = BOUNDING_SIZE_UM / 2.0
 TRIANGULAR_APERTURES = ("circle", "hexagon", "square")

@@ -71,7 +71,7 @@ from pcselsim.triangular_six_wave import (
 
 OUTPUT_DIRECTORY = (
     PROJECT_ROOT
-    / "results"
+    / "results" / "current" / "legacy"
     / "custom_semiconductor_triangular_triangle_main_refined"
 )
 TARGET_FILL = 0.15

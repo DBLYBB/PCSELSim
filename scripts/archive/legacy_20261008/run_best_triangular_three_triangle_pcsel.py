@@ -125,7 +125,7 @@ else:
 # PARAMETER PANEL A - optimized three-triangle unit cell
 # ===========================================================================
 RUN_TITLE = "BEST TRIANGULAR PCSEL: TRIANGLE MAIN + TWO TRIANGLE SATELLITES"
-OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "best_triangular_three_triangle_full"
+OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "current" / "legacy" / "best_triangular_three_triangle_full"
 
 LATTICE_CONSTANT_NM = 2.0 * SQUARE_LATTICE_CONSTANT_NM / np.sqrt(3.0)
 HOLE_EPSILON = 1.0

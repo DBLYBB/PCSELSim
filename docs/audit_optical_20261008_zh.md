@@ -1,5 +1,7 @@
 # 2026-10-08 光学核心逐文件审计
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
@@ -100,8 +102,8 @@ theta_square_max = atan[2*lambda / (3*h*(1+1/sqrt(3)))]
 
 审计程序：`scripts/archive/legacy_20261008/audit_optical_convergence_20261008.py`。结果保存为：
 
-- `results/audit_20261008/optical_convergence/grid_and_window_metrics.csv`
-- `results/audit_20261008/optical_convergence/extrapolation_audit.json`
+- `results/archive/legacy_before_20261021/audit_20261008/optical_convergence/grid_and_window_metrics.csv`
+- `results/archive/legacy_before_20261021/audit_20261008/optical_convergence/extrapolation_audit.json`
 
 孔几何及300μm方形尺寸与上一轮相同。本次分别计算N=7、9、11、13、15、17、21、25，不覆盖上一轮图片。
 
@@ -194,4 +196,4 @@ theta_square_max = atan[2*lambda / (3*h*(1+1/sqrt(3)))]
 
 因此不能仅展示B1的漂亮近圆亮斑而称设计成功。B2是各实际网格最低者，远场仍较椭圆；A近竞争且暗心。该方案值得保留为圆副孔带来工艺简化的折中，但需要独立有限离散、全波和增益竞争验证后才能判断实际出射模式。
 
-独立输出位于`results/robust_design_20261008/research_tier_diagnostic/`，包括几何、器件全貌、收敛图、六模式图谱、NPZ全部场和矩阵、JSON模式排序与制造余量。`04_far_field.png`是外推B1，`04b_finest_grid_lowest_far_field.png`是实际最细网格最低B2，两者应同时查看。
+独立输出位于`results/archive/legacy_before_20261021/robust_design_20261008/research_tier_diagnostic/`，包括几何、器件全貌、收敛图、六模式图谱、NPZ全部场和矩阵、JSON模式排序与制造余量。`04_far_field.png`是外推B1，`04b_finest_grid_lowest_far_field.png`是实际最细网格最低B2，两者应同时查看。

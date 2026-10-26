@@ -1,14 +1,14 @@
 """Finite-device companion solver for the triangular six-wave 3-D CWT model.
 
-The six envelopes propagate along the three characteristic directions of
-Liang Eq. (5.17).  They are sampled on an axial characteristic grid with zero
-incoming ghost values at a circular, regular-hexagonal, or square aperture.  The resulting first-order
-characteristic-grid operator is the finite-volume counterpart of the staggered
-relations in Eqs. (5.18)-(5.19).  As with the square four-wave implementation,
-reported losses should be checked by increasing ``radius_cells``.
+The six envelopes propagate along Liang Eq. (5.17)'s characteristic directions.
+The default generalized midpoint/link discretization implements the averages
+and differences of Eqs. (5.18)-(5.19), with zero incoming boundary amplitudes.
+The former first-order upwind operator is available as ``legacy_upwind``.
+Reported eigenvalues and fields come from the same actual finest-grid solve;
+mesh sensitivity is reported separately, without replacing eigenvalues by fits.
 
-中文：六个包络分别沿三组三角晶格特征线传播。圆形/正六边形/方形器件外的入射 ghost 值设为零，
-从而实现吸收/开放边界。远场直接对每个六角网格点的复辐射场作非均匀 Fourier 求和，
+中文：六个包络沿三组特征线传播，默认使用Liang广义交错平均/差分并在入射边界取零。
+圆形/正六边形/方形边界仍有阶梯几何误差，必须细化验证。远场对真实坐标作Fourier求和，
 没有把斜坐标数组错误地当成笛卡尔像素做 FFT，也没有人为乘涡旋或高斯因子。
 """
 
@@ -25,13 +25,15 @@ from matplotlib.colors import PowerNorm
 from matplotlib.patches import Circle, Polygon, Rectangle
 from scipy import sparse
 from scipy.optimize import linear_sum_assignment
-from scipy.sparse.linalg import ArpackNoConvergence, eigs
 
 from .triangular_six_wave import (
     TRIANGULAR_MODE_NAMES,
+    TRIANGULAR_DIRECTIONS, TRIANGULAR_POLARIZATIONS,
     TriangularCouplingResult,
 )
 from .numerical_quality import extrapolate_grid_loss
+from .finite_discretization import (build_finite_eigenproblem, relative_residual,
+                                    staggered_grid_diagnostics)
 
 
 @dataclass(frozen=True)
@@ -41,13 +43,20 @@ class TriangularFiniteSpec:
     ``radius_um`` is the circle/hexagon circumradius or square half-width.
     The characteristic grid remains aligned with the six Bloch-wave directions;
     only the physical aperture mask changes.
+
+    中文：radius_um 对方形表示半宽，对圆形/正六边形表示外接圆半径。
+    内部特征网格与物理外边界分开定义；300 μm 方形腔应指定半宽 150 μm。
     """
 
     radius_um: float = 30.0
     radius_cells: int = 9
+    # Legacy optional *field-amplitude* offset, added as +i*100*value to C.
+    # Current workflows solve the passive cavity with 0, then add the separate
+    # material intensity loss once in (2*alpha_field + alpha_internal)/overlap.
     internal_loss_cm: float = 0.0
     eigensolutions_per_target: int = 8
     aperture_shape: str = "circle"
+    discretization: str = "staggered"
 
 
 @dataclass(frozen=True)
@@ -71,7 +80,14 @@ class HexagonalGrid:
 
 @dataclass
 class TriangularFiniteMode:
-    """One finite six-wave eigenmode on the circular hexagonal grid."""
+    """One finite six-wave eigenmode on the chosen physical aperture.
+
+    fields has shape (6, grid.points) and stores actual coefficient-point
+    envelopes. alpha_per_m is field-amplitude loss; intensity sums envelope
+    powers and does not include unit-cell Bloch interference.
+    中文：fields 为 (6, 网格点数) 的实际系数点包络；alpha_per_m 是振幅损耗。
+    intensity 为六包络功率之和，不含单胞内 Bloch 波之间的微观干涉图样。
+    """
 
     name: str
     delta_per_m: float
@@ -84,6 +100,8 @@ class TriangularFiniteMode:
     grid_alpha_per_m: float | None = None
     extrapolation_uncertainty_per_m: float | None = None
     extrapolation_status: str = "single_grid"
+    discretization: str = "legacy_upwind"
+    eigen_residual: float | None = None
 
     @property
     def intensity(self) -> np.ndarray:
@@ -97,6 +115,14 @@ class TriangularFiniteMode:
 
 @dataclass(frozen=True)
 class TriangularFarField:
+    """Jones fields and window-qualified intensity metrics / Jones 远场及角窗内强度指标。
+
+    field_x/field_y share their complex scale; power components share one
+    intensity peak normalization. ellipticity is the beam's second-moment axis
+    ratio, not its polarization ellipticity angle.
+    中文：两 Jones 分量共用复数尺度，功率分量共用总强度峰值归一化。
+    ellipticity 是光斑二阶矩轴比，与偏振椭圆率角不同。
+    """
     angle_deg: np.ndarray
     field_x: np.ndarray
     field_y: np.ndarray
@@ -115,6 +141,7 @@ class TriangularFarField:
     alias_free_square_view_deg: float = 3.0
     energy_normalization: str = "evaluated_angular_window"
     moment_reference: str = "surface_normal_radial_second_moment"
+    samples: int = 121
 
 
 def build_hexagonal_grid(radius_cells: int, radius_um: float) -> HexagonalGrid:
@@ -141,7 +168,15 @@ def build_device_grid(
     shape = str(aperture_shape).lower()
     if shape not in {"circle", "hexagon", "square"}:
         raise ValueError("aperture_shape must be 'circle', 'hexagon', or 'square'")
-    extent = 2 * radius_cells if shape == "square" else radius_cells
+    if shape == "square":
+        extent = 2 * radius_cells
+    elif shape == "circle":
+        # A metric circle reaches |j|,|k|=2N/sqrt(3), just like the
+        # reciprocal-shell bound. Limiting either index to N clips six arcs
+        # and breaks C6 for N>=7 even though every retained node is in-circle.
+        extent = int(np.ceil(2*radius_cells/np.sqrt(3)))
+    else:
+        extent = radius_cells
     nodes = []
     for j in range(-extent, extent + 1):
         for k in range(-extent, extent + 1):
@@ -202,27 +237,28 @@ def _directed_upwind(
     )
 
 
-def triangular_finite_operator(
+def triangular_finite_eigenproblem(
     result: TriangularCouplingResult,
     spec: TriangularFiniteSpec,
-) -> tuple[sparse.csr_matrix, HexagonalGrid]:
-    """Discretize ``(delta+i*alpha)V = C V + i D V`` on a hex grid."""
+):
+    """Liang (5.18) generalized staggered operator on characteristic links."""
     grid = build_device_grid(
         spec.radius_cells, spec.radius_um, spec.aperture_shape
     )
-    identity = sparse.identity(grid.points, format="csr")
     local_matrix = result.coupling_m + 1j * 100.0 * spec.internal_loss_cm * np.eye(6)
-    local = sparse.kron(sparse.csr_matrix(local_matrix), identity, format="csr")
     directions = ((1, 0), (1, 0), (0, 1), (0, 1), (1, 1), (1, 1))
     signs = (True, False, True, False, True, False)
-    transport = sparse.block_diag(
-        tuple(
-            _directed_upwind(grid, step, positive)
-            for step, positive in zip(directions, signs, strict=True)
-        ),
-        format="csr",
-    )
-    return local + 1j * transport, grid
+    derivatives = tuple(_directed_upwind(grid, step, positive)
+                        for step, positive in zip(directions, signs, strict=True))
+    problem = build_finite_eigenproblem(local_matrix, derivatives, grid.spacing_m,
+                                       spec.discretization)
+    return problem, grid
+
+
+def triangular_finite_operator(result: TriangularCouplingResult, spec: TriangularFiniteSpec):
+    """Equivalent operator on common coefficient-point fields (not link fields)."""
+    problem, grid = triangular_finite_eigenproblem(result, spec)
+    return problem.center_operator(), grid
 
 
 def _hex_roughness(fields: np.ndarray, grid: HexagonalGrid) -> float:
@@ -237,15 +273,42 @@ def _hex_roughness(fields: np.ndarray, grid: HexagonalGrid) -> float:
             numerator += float(np.sum(np.abs(fields[:, left] - fields[:, right]) ** 2))
             samples += 1
     denominator = max(float(np.mean(np.abs(fields) ** 2)), np.finfo(float).eps)
-    return numerator / max(samples * denominator, 1.0)
+    return numerator / max(samples * denominator, np.finfo(float).eps)
+
+
+def _transform_six_wave_fields(fields: np.ndarray, grid: HexagonalGrid,
+                                transform: np.ndarray) -> np.ndarray | None:
+    """Transform coordinates, propagation directions and physical TE vectors.
+
+    Return None if the actual aperture is not invariant. Acceptance as an
+    eigenpartner additionally requires a residual check against its operator.
+    """
+    direct = np.asarray(((.5, .5), (-np.sqrt(3)/2, np.sqrt(3)/2)))
+    axial_transform = np.linalg.solve(direct, transform @ direct)
+    transformed = np.rint(axial_transform @ np.vstack((grid.axial_j, grid.axial_k))).astype(int)
+    destinations = [grid.index.get(tuple(point)) for point in transformed.T]
+    if any(index is None for index in destinations):
+        return None
+    answer = np.empty_like(fields)
+    for channel, direction in enumerate(TRIANGULAR_DIRECTIONS):
+        new_direction = transform @ direction
+        target = int(np.argmin(np.linalg.norm(TRIANGULAR_DIRECTIONS-new_direction, axis=1)))
+        sign = float(TRIANGULAR_POLARIZATIONS[target] @ (transform @ TRIANGULAR_POLARIZATIONS[channel]))
+        answer[target, destinations] = sign * fields[channel]
+    return answer
 
 
 def solve_triangular_finite_modes(
     result: TriangularCouplingResult,
     spec: TriangularFiniteSpec,
 ) -> dict[str, TriangularFiniteMode]:
-    """Find the smooth fundamental finite state connected to every Gamma band edge."""
-    operator, grid = triangular_finite_operator(result, spec)
+    """Find the smooth fundamental finite state connected to every Gamma band edge.
+
+    中文：这是按 Γ 点模族选取平滑基态的便捷接口，不返回完整横向谱。
+    声称最低阈值前应使用额外复移位/完整粗谱挑战，并对候选逐条闭合实频。
+    """
+    problem, grid = triangular_finite_eigenproblem(result, spec)
+    operator = problem.center_operator()
     targets = np.asarray(result.eigenvalues_m)
     basis = np.asarray(result.eigenvectors)
     sample = np.arange(operator.shape[0], dtype=float)
@@ -269,30 +332,21 @@ def solve_triangular_finite_modes(
         target = complex(np.mean(targets[group]))
         requested = max(spec.eigensolutions_per_target, 3 * len(group) + 2)
         requested = min(requested, operator.shape[0] - 2)
-        try:
-            values, vectors = eigs(
-                operator,
-                k=requested,
-                sigma=target,
-                which="LM",
-                tol=1e-8,
-                maxiter=max(8000, 6 * operator.shape[0]),
-                v0=v0,
-            )
-        except ArpackNoConvergence as error:
-            if error.eigenvalues is None or len(error.eigenvalues) < len(group):
-                raise
-            values = error.eigenvalues
-            vectors = error.eigenvectors
-            requested = len(values)
+        values, vectors = problem.near(target, requested, v0,
+                                      maxiter=max(8000, 6 * operator.shape[0]))
+        requested = len(values)
         normalized_vectors = vectors / np.linalg.norm(vectors, axis=0, keepdims=True)
+        # Gamma eigenvectors inside a degenerate eigenspace are arbitrary and
+        # may even be nonorthogonal. Project onto its QR-orthonormalized whole
+        # subspace; individual-vector overlaps spuriously split circle doublets
+        # by selecting different radial orders for the two labels.
+        group_basis, _ = np.linalg.qr(basis[:, group])
         costs = np.empty((len(group), requested), dtype=float)
         overlaps = np.empty_like(costs)
         for local_row, band_index in enumerate(group):
-            band_vector = basis[:, band_index]
             for candidate in range(requested):
                 fields = normalized_vectors[:, candidate].reshape(6, grid.points)
-                projection = np.einsum("a,ap->p", band_vector.conj(), fields)
+                projection = group_basis.conj().T @ fields
                 overlap = float(np.sum(np.abs(projection) ** 2))
                 overlaps[local_row, candidate] = overlap
                 passive_penalty = 20.0 if values[candidate].imag < 0.0 else 0.0
@@ -321,7 +375,37 @@ def solve_triangular_finite_modes(
                 grid=grid,
                 radiation_x=np.asarray(radiation_x),
                 radiation_y=np.asarray(radiation_y),
+                discretization=spec.discretization,
+                eigen_residual=relative_residual(operator, fields, value),
             )
+        # A single-vector Arnoldi space need not contain both vectors of an
+        # exactly repeated eigenvalue. Recover a physical symmetry partner only
+        # when it independently solves this finite operator (not from Gamma
+        # degeneracy alone). This prevents different radial orders masquerading
+        # as the two members of a circular-aperture doublet.
+        if len(group) == 2:
+            first_name, second_name = (TRIANGULAR_MODE_NAMES[index] for index in group)
+            seed = min((selected_modes[first_name], selected_modes[second_name]),
+                       key=lambda mode: _hex_roughness(mode.fields, grid))
+            value = seed.delta_per_m + 1j*seed.alpha_per_m
+            rotation = np.asarray(((.5, -np.sqrt(3)/2), (np.sqrt(3)/2, .5)))
+            for transform in (rotation, np.diag((1., -1.)), np.diag((-1., 1.))):
+                transformed = _transform_six_wave_fields(seed.fields, grid, transform)
+                if transformed is None:
+                    continue
+                independent = transformed - np.vdot(seed.fields, transformed)*seed.fields
+                norm = float(np.linalg.norm(independent))
+                if norm < 1e-3:
+                    continue
+                independent /= norm
+                residual = relative_residual(operator, independent, value)
+                if residual < 1e-7:
+                    radiation_x, radiation_y = result.radiation_amplitudes(independent)
+                    selected_modes[first_name] = replace(seed, name=first_name)
+                    selected_modes[second_name] = replace(seed, name=second_name,
+                        fields=independent, radiation_x=radiation_x, radiation_y=radiation_y,
+                        eigen_residual=residual)
+                    break
     return {name: selected_modes[name] for name in TRIANGULAR_MODE_NAMES}
 
 
@@ -330,10 +414,10 @@ def solve_triangular_finite_modes_converged(
     spec: TriangularFiniteSpec,
     radius_cells: tuple[int, ...],
 ) -> tuple[dict[str, TriangularFiniteMode], dict[str, np.ndarray]]:
-    """Extrapolate first-order characteristic-grid eigenvalues versus ``1/N``.
+    """Study mesh sensitivity; staggered retains the actual finest eigenpair.
 
-    Fields and radiation apertures come from the finest grid.  Only the reported
-    complex eigenvalue is replaced by the zero-spacing intercept.
+    Legacy_upwind alone retains the historical intercept for comparisons.
+    A mesh_checked label is empirical and does not certify the physical model.
     """
     if len(radius_cells) < 3 or any(
         left >= right for left, right in zip(radius_cells, radius_cells[1:])
@@ -354,6 +438,17 @@ def solve_triangular_finite_modes_converged(
             solution[name].delta_per_m + 1j * solution[name].alpha_per_m
             for solution in solutions
         ])
+        if spec.discretization == "staggered":
+            raw_alpha, uncertainty, status = staggered_grid_diagnostics(inverse, values.imag)
+            answer[name] = replace(
+                solutions[-1][name], grid_alpha_per_m=solutions[-1][name].alpha_per_m,
+                extrapolation_uncertainty_per_m=uncertainty, extrapolation_status=status,
+            )
+            convergence[name] = values
+            convergence[f"{name}_alpha_diagnostics"] = np.asarray(
+                [raw_alpha, uncertainty, solutions[-1][name].alpha_per_m]
+            )
+            continue
         delta_limit = float(np.polyfit(inverse, values.real, 1)[1])
         alpha_limit, raw_alpha, uncertainty, status = extrapolate_grid_loss(
             inverse, values.imag
@@ -400,10 +495,47 @@ def plot_triangular_grid_convergence(
     for ax in axes:
         ax.grid(alpha=0.2)
         ax.legend(ncol=2)
-    fig.suptitle("Triangular finite-device grid convergence")
+    fig.suptitle("Finite-device mesh study; staggered reports the actual finest eigenpair")
     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.95))
     fig.savefig(path, dpi=200)
     plt.close(fig)
+
+
+def _cartesian_point_fourier_sum(x_m, y_m, radiation_x, radiation_y, wave):
+    """Exact point sum on a square angular axis, with a bounded fast path.
+
+    Characteristic-grid points share Cartesian coordinates. Scatter their
+    complex amplitudes onto the *exact* unique-coordinate grid and separate
+    exp[-i(kx*x+ky*y)] into two matrix products. This changes summation order
+    only: coordinates are neither rounded nor interpolated, and the two Jones
+    components keep their common complex scale. Unstructured point clouds use
+    the direct chunked sum instead of allocating a dense quadratic grid.
+
+    中文：散点按完全相同的笛卡尔坐标归并后分离指数求和，只改变加法次序；
+    不舍入坐标、不插值、不把斜网格当普通像素 FFT，两偏振分量保持共同尺度。
+    """
+    x, ix = np.unique(x_m, return_inverse=True)
+    y, iy = np.unique(y_m, return_inverse=True)
+    if len(x)*len(y) <= min(4*len(x_m), 1_000_000):
+        phase_x = np.exp(-1j*wave[:, None]*x[None, :])
+        phase_y = np.exp(-1j*wave[:, None]*y[None, :])
+        result = []
+        for radiation in (radiation_x, radiation_y):
+            aperture = np.zeros((len(y), len(x)), dtype=np.complex128)
+            np.add.at(aperture, (iy, ix), radiation)
+            result.append((phase_y @ aperture) @ phase_x.T)
+        return result
+    kx, ky = np.meshgrid(wave, wave)
+    kx, ky = kx.ravel(), ky.ravel()
+    output_x = np.empty(kx.size, dtype=np.complex128)
+    output_y = np.empty_like(output_x)
+    for start in range(0, kx.size, 512):
+        stop = min(start+512, kx.size)
+        phase = np.exp(-1j*(kx[start:stop, None]*x_m[None, :]
+                           + ky[start:stop, None]*y_m[None, :]))
+        output_x[start:stop] = phase @ radiation_x
+        output_y[start:stop] = phase @ radiation_y
+    return output_x.reshape(len(wave), len(wave)), output_y.reshape(len(wave), len(wave))
 
 
 def triangular_vector_far_field(
@@ -418,6 +550,9 @@ def triangular_vector_far_field(
     evaluated beyond its sampling Brillouin zone.  Restrict all four corners
     of the requested square to that zone.  Energy ratios and RMS are relative
     to this evaluated window; they are not whole-hemisphere beam metrics.
+
+    中文：对实际辐射场及物理坐标做 Fourier 点求和，并限制在采样无混叠角窗。
+    包围能量、RMS 和轴比仅针对该角窗；增大绘图角度不能绕过源网格 Nyquist 限制。
     """
     if view_deg <= 0.0 or samples < 3 or wavelength_nm <= 0.0:
         raise ValueError("view_deg and wavelength_nm must be positive; samples >= 3")
@@ -440,24 +575,14 @@ def triangular_vector_far_field(
     angle = np.linspace(-evaluated_view, evaluated_view, int(samples))
     theta_x, theta_y = np.meshgrid(np.deg2rad(angle), np.deg2rad(angle))
     k0 = 2.0 * np.pi / (wavelength_nm * 1e-9)
-    kx = k0 * np.tan(theta_x.ravel())
-    ky = k0 * np.tan(theta_y.ravel())
     x_m = mode.grid.x_um * 1e-6
     y_m = mode.grid.y_um * 1e-6
-    output_x = np.empty(kx.size, dtype=np.complex128)
-    output_y = np.empty_like(output_x)
-    chunk = 512
-    for start in range(0, kx.size, chunk):
-        stop = min(start + chunk, kx.size)
-        phase = np.exp(-1j * (
-            kx[start:stop, None] * x_m[None, :]
-            + ky[start:stop, None] * y_m[None, :]
-        ))
-        output_x[start:stop] = phase @ mode.radiation_x
-        output_y[start:stop] = phase @ mode.radiation_y
+    output_x, output_y = _cartesian_point_fourier_sum(
+        x_m, y_m, mode.radiation_x, mode.radiation_y,
+        k0*np.tan(np.deg2rad(angle)))
     obliquity = np.cos(theta_x) + np.cos(theta_y) - 1.0
-    field_x = output_x.reshape(theta_x.shape) * obliquity
-    field_y = output_y.reshape(theta_y.shape) * obliquity
+    field_x = output_x * obliquity
+    field_y = output_y * obliquity
     power_x = np.abs(field_x) ** 2
     power_y = np.abs(field_y) ** 2
     power = power_x + power_y
@@ -511,6 +636,7 @@ def triangular_vector_far_field(
         requested_view_deg=float(view_deg),
         evaluated_view_deg=evaluated_view,
         alias_free_square_view_deg=safe_view,
+        samples=int(samples),
     )
 
 
@@ -547,6 +673,9 @@ def write_triangular_finite_table(
     modes: dict[str, TriangularFiniteMode],
     result: TriangularCouplingResult,
     path: Path,
+    view_deg: float = 1.0,
+    samples: int = 161,
+    far_fields: dict[str, TriangularFarField] | None = None,
 ) -> None:
     """Save finite eigenvalues and directly calculated far-field metrics."""
     with path.open("w", newline="", encoding="utf-8-sig") as stream:
@@ -556,10 +685,14 @@ def write_triangular_finite_table(
             "band_overlap", "far_field_center_to_peak", "full_rms_divergence_deg",
             "peak_offset_deg", "centroid_offset_deg", "ellipticity",
             "encircled_power_0p5deg", "encircled_power_1deg",
+            "requested_half_window_deg", "evaluated_half_window_deg", "angular_samples",
+            "energy_normalization", "moment_reference", "discretization", "eigen_residual",
+            "mesh_status", "empirical_grid_sensitivity_cm-1",
         ))
         for name in TRIANGULAR_MODE_NAMES:
             mode = modes[name]
-            far = triangular_vector_far_field(mode, result.bragg_wavelength_nm)
+            far = (far_fields[name] if far_fields is not None else
+                   triangular_vector_far_field(mode, result.bragg_wavelength_nm, view_deg, samples))
             writer.writerow((
                 name,
                 mode.delta_per_m / 100.0,
@@ -573,6 +706,10 @@ def write_triangular_finite_table(
                 far.ellipticity,
                 far.encircled_power_0p5deg,
                 far.encircled_power_1deg,
+                far.requested_view_deg, far.evaluated_view_deg, far.samples,
+                far.energy_normalization, far.moment_reference, mode.discretization,
+                mode.eigen_residual, mode.extrapolation_status,
+                None if mode.extrapolation_uncertainty_per_m is None else mode.extrapolation_uncertainty_per_m / 100,
             ))
 
 
@@ -607,6 +744,8 @@ def plot_triangular_mode_atlas(
     result: TriangularCouplingResult,
     path: Path,
     view_deg: float = 3.0,
+    samples: int = 161,
+    far_fields: dict[str, TriangularFarField] | None = None,
 ) -> None:
     """Plot whole-device envelope, one-cell state, and physical vector FFP."""
     fig, axes = plt.subplots(6, 3, figsize=(11.6, 18.0), constrained_layout=True)
@@ -628,9 +767,8 @@ def plot_triangular_mode_atlas(
             xlabel="x/a",
             ylabel="y/a",
         )
-        far = triangular_vector_far_field(
-            mode, result.bragg_wavelength_nm, view_deg=view_deg
-        )
+        far = (far_fields[name] if far_fields is not None else triangular_vector_far_field(
+            mode, result.bragg_wavelength_nm, view_deg=view_deg, samples=samples))
         extent = (
             far.angle_deg[0], far.angle_deg[-1],
             far.angle_deg[0], far.angle_deg[-1],
@@ -651,7 +789,8 @@ def plot_triangular_mode_atlas(
             xlabel="theta_x (deg)",
             ylabel="theta_y (deg)",
         )
-    fig.suptitle("Six-wave finite modes: envelope, cell field and vector far field")
+    window = far.evaluated_view_deg
+    fig.suptitle(f"Six-wave selected families; FFP +/-{window:.4g} deg, {far.samples} samples; energy window-normalized")
     fig.savefig(path, dpi=190)
     plt.close(fig)
 
@@ -661,15 +800,15 @@ def plot_triangular_far_field_diagnostics(
     result: TriangularCouplingResult,
     path: Path,
     view_deg: float = 3.0,
+    samples: int = 161,
+    far: TriangularFarField | None = None,
 ) -> None:
     """Plot total and polarized far fields plus phase/polarization axes."""
-    far = triangular_vector_far_field(mode, result.bragg_wavelength_nm, view_deg=view_deg)
+    far = far if far is not None else triangular_vector_far_field(
+        mode, result.bragg_wavelength_nm, view_deg=view_deg, samples=samples)
     total = far.power
     phase = np.angle(far.field_x + 1j * far.field_y)
-    s1 = far.power_x - far.power_y
-    cross = 2.0 * np.real(far.field_x * np.conj(far.field_y))
-    scale = max(float(total.max()), np.finfo(float).eps)
-    orientation = 0.5 * np.arctan2(cross / scale, s1)
+    orientation = polarization_axis_angle(far.field_x, far.field_y)
     extent = (
         far.angle_deg[0], far.angle_deg[-1],
         far.angle_deg[0], far.angle_deg[-1],
@@ -709,8 +848,16 @@ def plot_triangular_far_field_diagnostics(
         f"peak offset={far.peak_offset_deg:.3f} deg, "
         f"E1={far.encircled_power_1deg:.3f}, "
         f"ellipticity={far.ellipticity:.3f}"
+        f"\n+/-{far.evaluated_view_deg:.4g} deg, {far.samples} samples; window-normalized energy; radial RMS diameter"
     )
     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
     fig.savefig(path, dpi=200)
     plt.close(fig)
+
+
+def polarization_axis_angle(field_x: np.ndarray, field_y: np.ndarray) -> np.ndarray:
+    """Physical Stokes axis, invariant to common complex field normalization."""
+    s1 = np.abs(field_x)**2 - np.abs(field_y)**2
+    s2 = 2.0 * np.real(field_x * np.conj(field_y))
+    return 0.5 * np.arctan2(s2, s1)
 

@@ -1,4 +1,4 @@
-"""Curated four-wave workflow: explicit parameters, unchanged physical backend.
+"""Curated four-wave workflow: explicit parameters and shared optical backends.
 
 中文：只组织输入/输出与步骤；不改 src 中的四波/载流子/辐射方程。
 """
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 if __package__:
@@ -33,6 +33,7 @@ from pcselsim.custom_analysis import (
     solve_finite_modes_converged,
     write_mode_table, write_parameter_report,
     vector_far_field,
+    vector_far_field_complex, vector_far_field_metrics,
 )
 from pcselsim.constants import c, e, pi
 from pcselsim.geometry import Ellipse, PolygonInclusion, SquareLatticeCell
@@ -43,6 +44,7 @@ from pcselsim.solver import TimeDomainSolver
 from pcselsim.three_d_cwt import ThreeDCWTSettings, build_geometry_coupling
 from pcselsim.vertical import Layer, LayerStack
 from pcselsim.fabrication import FabricationRules, evaluate_fabrication
+from pcselsim.finite_discretization import assess_mode_selection
 from scripts._presentation import plot_device_overview, plot_far_field_zoom
 
 
@@ -103,6 +105,9 @@ class FourWaveSettings:
     ZERO_CARRIER_GAIN_CM: object
     FABRICATION_RULES: tuple[FabricationRules, ...]
     FAR_FIELD_ZOOM_DEG: float
+    FAR_FIELD_VIEW_DEG: float = 1.0
+    FAR_FIELD_PADDING: int = 16
+    FINITE_DISCRETIZATION: str = "staggered"
 
 
 def build_unit_cell(lattice: LatticeSpec) -> SquareLatticeCell:
@@ -206,6 +211,7 @@ def build_specs(p: FourWaveSettings):
         modal_detuning_cm=tuple(modal_values_cm.real),
         modal_radiation_loss_cm=tuple(modal_values_cm.imag),
         grid_points=p.FINITE_EIGEN_GRIDS[-1],
+        discretization=p.FINITE_DISCRETIZATION,
     )
     simulation = SimulationConfig(
         optical=OpticalConfig(
@@ -302,6 +308,7 @@ def run_four_wave(p: FourWaveSettings, switches: dict[str, bool], output: Path) 
     modes = None
     convergence = None
     threshold_audit = None
+    far_fields = None
 
     if switches.get("00_fabrication", False):
         print("[00] periodic hole width/gap and assumed fabrication budgets")
@@ -326,7 +333,7 @@ def run_four_wave(p: FourWaveSettings, switches: dict[str, bool], output: Path) 
     print("="*78)
 
     def need_modes():
-        nonlocal modes, convergence, simulation, threshold_audit, linear
+        nonlocal modes, convergence, simulation, threshold_audit, linear, far_fields
         ensure_square_four_wave(lattice)
         if modes is None:
             print(f"    finite-area convergence grids={p.FINITE_EIGEN_GRIDS} ...")
@@ -348,10 +355,24 @@ def run_four_wave(p: FourWaveSettings, switches: dict[str, bool], output: Path) 
                 "reported_amplitude_loss_cm-1": mode.alpha_per_m/100.0,
                 "finest_grid_amplitude_loss_cm-1": mode.grid_alpha_per_m/100.0,
                 "empirical_sensitivity_cm-1": mode.extrapolation_uncertainty_per_m/100.0,
+                "discretization": mode.discretization,
+                "relative_eigen_residual": mode.eigen_residual,
             } for name, mode in modes.items()}
             (output/"05_numerical_quality.json").write_text(json.dumps(quality, indent=2), encoding="utf-8")
             lasing_name = min(MODE_NAMES, key=lambda name: modes[name].alpha_per_m)
             threshold_audit = threshold_current_audit(p, simulation, modes[lasing_name])
+            selection = assess_mode_selection(modes)
+            threshold_audit["family_selection"] = selection
+            far_fields = {name: vector_far_field_complex(mode.radiation_x, mode.radiation_y,
+                linear.wavelength_nm, linear.domain_um, p.FAR_FIELD_VIEW_DEG,
+                p.FAR_FIELD_PADDING) for name, mode in modes.items()}
+            beam_metrics = {name: asdict(vector_far_field_metrics(linear, mode,
+                p.FAR_FIELD_VIEW_DEG, p.FAR_FIELD_PADDING, far_fields[name])) for name, mode in modes.items()}
+            (output/"06_far_field_metrics.json").write_text(json.dumps(beam_metrics, indent=2), encoding="utf-8")
+            np.savez_compressed(output/"06_far_field_arrays.npz",
+                **{f"angle_deg_{name}": fields[0] for name, fields in far_fields.items()},
+                **{f"field_x_{name}": fields[1] for name, fields in far_fields.items()},
+                **{f"field_y_{name}": fields[2] for name, fields in far_fields.items()})
             selected_threshold = (
                 threshold_audit["derived_uniform_injection_threshold_A"]
                 if p.THRESHOLD_CURRENT_SOURCE == "derived"
@@ -370,9 +391,7 @@ def run_four_wave(p: FourWaveSettings, switches: dict[str, bool], output: Path) 
             threshold_audit["selected_family_extrapolation_status"] = modes[lasing_name].extrapolation_status
             threshold_audit["lowest_finest_grid_family"] = min(
                 MODE_NAMES, key=lambda name: modes[name].grid_alpha_per_m)
-            threshold_audit["selection_interpretation"] = (
-                "Lowest reported loss among four retained band-connected families; "
-                "not a complete transverse spectrum or proof of the lasing mode.")
+            threshold_audit["selection_interpretation"] = selection["selection_interpretation"]
             (output/"05_threshold_current_audit.json").write_text(
                 json.dumps(threshold_audit, indent=2), encoding="utf-8"
             )
@@ -391,6 +410,11 @@ def run_four_wave(p: FourWaveSettings, switches: dict[str, bool], output: Path) 
             "cwt_truncation_order": p.CWT_TRUNCATION_ORDER,
             "vertical_step_nm": p.VERTICAL_STEP_NM,
             "finite_eigen_grids": p.FINITE_EIGEN_GRIDS,
+            "finite_discretization": p.FINITE_DISCRETIZATION,
+            "finite_eigenvalue_source": "actual finest grid" if p.FINITE_DISCRETIZATION == "staggered" else "legacy upwind fit",
+            "far_field_requested_half_window_deg": p.FAR_FIELD_VIEW_DEG,
+            "far_field_fft_padding": p.FAR_FIELD_PADDING,
+            "far_field_metric_domain": "evaluated angular window; surface-normal radial RMS diameter",
             "bragg_wavelength_nm": geometry_model.bragg_wavelength_nm,
             "derived_effective_index": geometry_model.effective_index,
             "derived_group_index": geometry_model.group_index,
@@ -457,6 +481,7 @@ def run_four_wave(p: FourWaveSettings, switches: dict[str, bool], output: Path) 
             effective_index=geometry_model.effective_index,
             q_max=0.01,
             points=201,
+            group_index=geometry_model.group_index,
         )
         plot_band_diagram(
             band_diagram,
@@ -491,16 +516,18 @@ def run_four_wave(p: FourWaveSettings, switches: dict[str, bool], output: Path) 
         plot_mode_atlas(
             lattice, linear, current_modes, output/"06_mode_atlas.png",
             unit_cell_builder=geometry_model.unit_cell_fields,
+            view_deg=p.FAR_FIELD_VIEW_DEG, padding=p.FAR_FIELD_PADDING, far_fields=far_fields,
         )
         plot_vector_far_field_diagnostics(
-            linear, current_modes["A"], output/"06_A_vector_far_field.png"
+            linear, current_modes["A"], output/"06_A_vector_far_field.png",
+            view_deg=p.FAR_FIELD_VIEW_DEG, padding=p.FAR_FIELD_PADDING, far_field=far_fields["A"],
         )
     if switches.get("06_far_field_zoom", False):
         current_modes = need_modes()
         selected = current_modes[str(threshold_audit["lasing_mode"])]
-        angle, power, _, _, _ = vector_far_field(
-            selected.radiation_x, selected.radiation_y,
-            linear.wavelength_nm, linear.domain_um, view_deg=1.0, padding=16)
+        angle, fx, fy = far_fields[selected.name]
+        power = np.abs(fx)**2+np.abs(fy)**2
+        power /= max(float(power.max()), np.finfo(float).eps)
         plot_far_field_zoom(angle, power, p.FAR_FIELD_ZOOM_DEG,
                             output/"06_selected_far_field_zoom.png", selected.name)
     if switches["07_length_sweep"]:
@@ -548,7 +575,7 @@ def run_four_wave(p: FourWaveSettings, switches: dict[str, bool], output: Path) 
         )
         results = []
         for ratio in p.CURRENT_RATIOS:
-            print(f"    I/Ith={ratio:.2f}")
+            print(f"    I/I_ref={ratio:.2f}")
             result = solver.run(ratio)
             results.append(result)
             tag = f"I_{ratio:.2f}".replace(".", "p")

@@ -11,17 +11,26 @@ geometry-predictive work should run ``run_custom_semiconductor_pcsel.py``.
 from __future__ import annotations
 
 import csv
+import warnings
 from pathlib import Path
 
 from .config import SimulationConfig
 from .io import save_result
 from .plotting import plot_spatial, plot_spectra, plot_transient
 from .solver import SimulationResult, TimeDomainSolver
+from .run_output import prepare_output, write_provenance
 
 
 def reproduce(config: SimulationConfig, output_dir: str | Path) -> list[SimulationResult]:
-    output = Path(output_dir)
-    output.mkdir(parents=True, exist_ok=True)
+    warnings.warn(
+        "Legacy calibrated-C workflow: band-edge eigenvalues are input parameters, "
+        "not a geometry-predictive reproduction of the paper. Use "
+        "scripts/run_paper_reproduction.py for the explicit geometry model.",
+        RuntimeWarning, stacklevel=2,
+    )
+    project_root = Path(__file__).resolve().parents[2]
+    output = prepare_output(output_dir, project_root)
+    write_provenance(output, project_root)
     solver = TimeDomainSolver(config)
     results: list[SimulationResult] = []
     for ratio in config.reproduction.current_ratios:

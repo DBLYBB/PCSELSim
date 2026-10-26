@@ -1,5 +1,7 @@
 # 六波有限器件、整体包络、远场与亮心晶格设计
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
@@ -140,7 +142,7 @@ python scripts\archive\legacy_20261008\design_triangular_bright_mode.py
 设计结果进入：
 
 ```text
-results/custom_semiconductor_triangular_designed_bright_mode
+results/archive/legacy_before_20261021/custom_semiconductor_triangular_designed_bright_mode
 ```
 
 重要输出：

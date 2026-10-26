@@ -136,7 +136,7 @@ STEPS = {
     "10_best_mode_far_field": True,
 }
 
-OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "custom_semiconductor_triangular_six_wave"
+OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "current" / "legacy" / "custom_semiconductor_triangular_six_wave"
 
 
 def build_model():

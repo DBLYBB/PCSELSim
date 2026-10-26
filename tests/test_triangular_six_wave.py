@@ -97,3 +97,31 @@ def test_centered_circle_preserves_c6_doublets_and_passivity() -> None:
     assert (diagram.left_endpoint, diagram.right_endpoint) == ("M", "X")
     assert np.all(np.isfinite(diagram.normalized_frequency))
 
+
+def test_fixed_frequency_rebuilds_te0_and_coupling_without_changing_default_bragg() -> None:
+    """A fixed lambda must bypass Bragg, whereas the old default still closes it."""
+    from scipy.optimize import brentq
+
+    cell = TriangularLatticeCell(3.4**2, (TriangularEllipse(radii_over_a=(.18, .18)),))
+    stack = LayerStack((Layer("PC", 180., float(np.sqrt(cell.fourier_epsilon(0,0).real))),),
+                       top_index=3., bottom_index=3., padding_um=.35)
+    settings = TriangularCWTSettings(2, 10.)
+    period = 300.
+    # Independent scalar TE0/Bragg condition; no call to a coupling builder.
+    physical_bragg = brentq(lambda wavelength:
+        wavelength-np.sqrt(3.)/2*period*stack.solve_te0(wavelength,dz_nm=10.).effective_index,
+        700., 1000., xtol=1e-9)
+    default = build_triangular_coupling(cell,stack,"PC",period,850.,settings)
+    assert abs(default.bragg_wavelength_nm-physical_bragg) < 2e-4
+
+    fixed_wavelength = physical_bragg+35.
+    fixed = build_triangular_coupling(cell,stack,"PC",period,850.,settings,
+                                      fixed_wavelength_nm=fixed_wavelength)
+    direct_te0 = stack.solve_te0(fixed_wavelength,dz_nm=10.)
+    assert fixed.bragg_wavelength_nm == fixed_wavelength
+    assert np.isclose(fixed.effective_index,direct_te0.effective_index,rtol=0,atol=1e-12)
+    assert np.allclose(abs(fixed.vertical_mode.field),abs(direct_te0.field),rtol=1e-11,atol=1e-12)
+    assert abs(fixed.bragg_wavelength_nm-np.sqrt(3.)/2*period*fixed.effective_index) > 30.
+    assert np.linalg.norm(fixed.coupling_m-default.coupling_m)/np.linalg.norm(default.coupling_m) > .01
+    assert abs(fixed.radiation_surface_factor-default.radiation_surface_factor)/abs(default.radiation_surface_factor) > .01
+

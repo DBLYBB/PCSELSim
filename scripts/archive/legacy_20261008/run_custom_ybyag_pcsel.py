@@ -108,7 +108,7 @@ STEPS = {
     "10_pump_scan": True,    # single-winning-mode steady scan / 单胜出模式稳态扫描
 }
 
-OUTPUT_DIRECTORY = PROJECT_ROOT/"results"/"custom_ybyag_pcsel"
+OUTPUT_DIRECTORY = PROJECT_ROOT/"results"/"current"/"legacy"/"custom_ybyag_pcsel"
 
 
 def build_specs():

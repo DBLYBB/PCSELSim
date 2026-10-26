@@ -69,7 +69,7 @@ from pcselsim.vertical import Layer, LayerStack
 
 
 OUTPUT_DIRECTORY = (
-    PROJECT_ROOT / "results" / "custom_semiconductor_square_lattice_optimized"
+    PROJECT_ROOT / "results" / "current" / "legacy" / "custom_semiconductor_square_lattice_optimized"
 )
 BACKGROUND_EPSILON = 3.554**2
 TARGET_FILL = 0.05

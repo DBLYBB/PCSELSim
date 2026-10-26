@@ -70,7 +70,7 @@ else:
 
 
 OUTPUT_DIRECTORY = (
-    PROJECT_ROOT / "results" / "triangular_three_triangle_manufacturable_300um"
+    PROJECT_ROOT / "results" / "current" / "legacy" / "triangular_three_triangle_manufacturable_300um"
 )
 COARSE_SETTINGS = (4, 7.0, 5)
 MEDIUM_SETTINGS = (7, 4.0, 7)

@@ -3,6 +3,11 @@
 Default: two smooth circles selected by a local fabrication-aware screen.
 Enable 08_time_domain explicitly to calculate carrier-field dynamics, not just cold cavity.
 改下方参数和开关，右键 Run；先用 --dry-run 看计划，--quick 只做流程检查。
+
+This convenient preset is not the frozen matched300 optimized design. Use its
+dedicated search/finalize scripts when reproducing the final comparison.
+此入口便于修改预设；已定稿的 300 μm 中央主孔加对角副孔方案，应按
+matched300 的 search/finalize 流程复算，不能把当前默认双圆孔当作定稿参数。
 """
 from __future__ import annotations
 
@@ -59,6 +64,7 @@ LAYERS = (
     LayerSpec("active InGaAs QWs", 10.0, 3.584, "#f0027f"),
     LayerSpec("active AlGaAs barrier 2", 20.0, 3.445, "#ccebc5"),
     LayerSpec("active InGaAs QWs", 10.0, 3.584, "#f0027f"),
+    LayerSpec("active AlGaAs barrier 3", 20.0, 3.445, "#ccebc5"),
     LayerSpec("AlGaAs", 80.0, 3.445, "#ccebc5"),
     LayerSpec("n-clad AlGaAs", 1000.0, 3.122, "#bebada"),
 )
@@ -90,7 +96,7 @@ THRESHOLD_CURRENT_SOURCE = "derived"  # paper=0.7 A; derived value is still audi
 # 这些是精度参数而不是器件参数；正式结果至少比较两档 D 和多档有限网格。
 CWT_TRUNCATION_ORDER = 10
 VERTICAL_STEP_NM = 3.0
-FINITE_EIGEN_GRIDS = (13, 17, 21, 25)  # extrapolated to zero grid spacing
+FINITE_EIGEN_GRIDS = (13, 17, 21, 25)  # actual finest-grid eigenpair; mesh sensitivity reported separately
 LENGTH_SWEEP_GRID_POINTS = (11, 15, 19)
 LENGTH_SWEEP_UM = (70.0, 150.0, 300.0, 500.0)
 
@@ -142,6 +148,14 @@ FABRICATION_RULES = (FabricationRules("easier_assumption", 60, 65, 3, 3),)
 
 
 def build_parameters() -> FourWaveSettings:
+    """Collect geometry, stack and shared inputs / 汇总孔形、层结构等参数。
+
+    Internal loss is an intensity coefficient in cm^-1, while passive finite
+    eigenvalues store field-amplitude loss in m^-1; the threshold audit converts
+    them together rather than adding internal loss to both calculations.
+    内损耗为强度损耗（cm^-1），有限腔本征值虚部为振幅损耗（m^-1）；阈值
+    审核统一换算，不能在被动本征求解与材料阈值中重复加入内损耗。
+    """
     return FourWaveSettings(
         FABRICATION_RULES=FABRICATION_RULES,
         FAR_FIELD_ZOOM_DEG=FAR_FIELD_ZOOM_DEG,
@@ -200,6 +214,7 @@ def build_parameters() -> FourWaveSettings:
 
 
 def main(argv=None) -> None:
+    """Dispatch enabled STEPS with shared output rules / 按统一输出规则执行所选步骤。"""
     execute_run(build_parameters(), STEPS, "square_double_hole", run_four_wave, argv)
 
 

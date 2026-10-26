@@ -1,5 +1,7 @@
 # PCSELSim 物理审计、论文对照与代码地图 / Physics audit and code map
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
@@ -43,7 +45,7 @@ existing result folder, however, has the same evidence level.
 
 10 ns 旧结果在 `I/Ith=1.05, 1.4, 2.8, 4.2` 时的末 1 ns 平均功率约为
 `0.070, 0.222, 0.943, 1.702 W`。本轮修正后已独立重跑到
-`results/custom_semiconductor_inoue2019_audit_corrected`，对应值为
+`results/archive/legacy_before_20261021/custom_semiconductor_inoue2019_audit_corrected`，对应值为
 `0.0709, 0.2225, 0.9440, 1.7052 W`，相对变化均小于 `0.6%`。这说明修正
 提高了公式一致性但没有人为制造新的结果趋势。低电流弛豫振荡处于论文给出的 GHz 量级，
 中心载流子钳位和高电流空间烧孔趋势也合理。尚未通过的项目是：

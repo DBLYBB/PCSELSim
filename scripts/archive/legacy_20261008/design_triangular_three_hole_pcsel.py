@@ -64,7 +64,7 @@ FINAL_TRUNCATION = 10
 FINAL_VERTICAL_STEP_NM = 3.0
 FINAL_RADIUS_CELLS = (7, 9, 11)
 OUTPUT_DIRECTORY = (
-    PROJECT_ROOT / "results" / "custom_semiconductor_triangular_three_hole_optimized"
+    PROJECT_ROOT / "results" / "current" / "legacy" / "custom_semiconductor_triangular_three_hole_optimized"
 )
 
 PC_LAYER_NAME = "PC"

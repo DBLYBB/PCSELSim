@@ -1,5 +1,7 @@
 # 从零开始运行、理解和修改 PCSELSim
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
@@ -67,7 +69,7 @@ PCSELSim/
 
 如果你的目标是修改晶格、孔形和层结构，应运行
 `scripts/archive/legacy_20261008/run_custom_semiconductor_pcsel.py`。它默认输出到
-`results/custom_semiconductor_inoue2019`；完整第 08 步为 10 ns，第一次可先只运行 01–07。
+`results/archive/legacy_before_20261021/custom_semiconductor_inoue2019`；完整第 08 步为 10 ns，第一次可先只运行 01–07。
 
 如果只想运行目前推荐的三角晶格三孔器件，不需要先跑全部历史优化，直接右键运行：
 
@@ -189,7 +191,7 @@ pytest
 短测试输出在：
 
 ```text
-results/quick/
+results/archive/legacy_before_20261021/quick/
 ```
 
 ### 4.2 完整计算
@@ -204,7 +206,7 @@ results/quick/
 完整结果在：
 
 ```text
-results/inoue2019/
+results/archive/legacy_before_20261021/inoue2019/
 ```
 
 ## 5. 怎样看输出文件
@@ -242,7 +244,7 @@ summary.csv           最终功率和中心载流子浓度的表格
 ```python
 import numpy as np
 
-data = np.load("results/inoue2019/I_2p80.npz")
+data = np.load("results/archive/legacy_before_20261021/inoue2019/I_2p80.npz")
 print(data.files)
 print(data["power_W"])
 ```

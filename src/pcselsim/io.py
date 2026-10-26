@@ -27,6 +27,11 @@ def save_result(result: SimulationResult, path: str | Path) -> Path:
         center_carrier_cm3=result.center_carrier_cm3,
         power_W=result.power_W,
         complex_signal=result.complex_signal,
+        # Empty numeric arrays keep legacy results loadable with allow_pickle=False.
+        probe_signals=(result.probe_signals if result.probe_signals is not None
+                       else np.empty((0, 0, 4), dtype=np.complex128)),
+        probe_coordinates_um=(result.probe_coordinates_um if result.probe_coordinates_um is not None
+                              else np.empty((0, 2))),
         final_carrier_cm3=result.final_carrier_cm3,
         final_photon_areal_cm2=result.final_photon_areal_cm2,
         final_field=result.final_field,

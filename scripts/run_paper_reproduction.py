@@ -2,6 +2,11 @@
 
 Default: geometry-derived idealized Inoue motif, not certified full reproduction.
 改下方参数和开关，右键 Run；先用 --dry-run 看计划，--quick 只做流程检查。
+
+This configurable reference workflow is separate from the matched300 finalist
+scripts. Keep the static aperture and the time-domain window sizes distinct.
+本文件是可配置的论文对照入口；300 μm 优化定稿另由 matched300 脚本生成。
+静态腔尺寸与时域计算窗口是不同参数，不能据此混用阈值或图中的尺寸。
 """
 from __future__ import annotations
 
@@ -62,6 +67,7 @@ LAYERS = (
     LayerSpec("active InGaAs QWs", 10.0, 3.584, "#f0027f"),
     LayerSpec("active AlGaAs barrier 2", 20.0, 3.445, "#ccebc5"),
     LayerSpec("active InGaAs QWs", 10.0, 3.584, "#f0027f"),
+    LayerSpec("active AlGaAs barrier 3", 20.0, 3.445, "#ccebc5"),
     LayerSpec("AlGaAs", 80.0, 3.445, "#ccebc5"),
     LayerSpec("n-clad AlGaAs", 1000.0, 3.122, "#bebada"),
 )
@@ -93,7 +99,7 @@ THRESHOLD_CURRENT_SOURCE = "paper"  # paper=0.7 A; derived value is still audite
 # 这些是精度参数而不是器件参数；正式结果至少比较两档 D 和多档有限网格。
 CWT_TRUNCATION_ORDER = 10
 VERTICAL_STEP_NM = 3.0
-FINITE_EIGEN_GRIDS = (13, 17, 21, 25)  # extrapolated to zero grid spacing
+FINITE_EIGEN_GRIDS = (13, 17, 21, 25)  # actual finest-grid eigenpair; mesh sensitivity reported separately
 LENGTH_SWEEP_GRID_POINTS = (11, 15, 19)
 LENGTH_SWEEP_UM = (70.0, 150.0, 300.0, 500.0)
 
@@ -145,6 +151,12 @@ FABRICATION_RULES = (FabricationRules("research_assumption", 40, 50, 3, 3),)
 
 
 def build_parameters() -> FourWaveSettings:
+    """Collect editable inputs into one settings object / 汇总上方可修改参数。
+
+    Names ending in _NM/_UM/_CM retain their declared units; conversions and
+    physical loss conventions are handled by the numerical workflow.
+    _NM/_UM/_CM 后缀保留各自单位；单位换算与损耗定义由求解流程统一处理。
+    """
     return FourWaveSettings(
         FABRICATION_RULES=FABRICATION_RULES,
         FAR_FIELD_ZOOM_DEG=FAR_FIELD_ZOOM_DEG,
@@ -203,6 +215,7 @@ def build_parameters() -> FourWaveSettings:
 
 
 def main(argv=None) -> None:
+    """Run only enabled STEPS through the common CLI / 按 STEPS 开关执行公共流程。"""
     execute_run(build_parameters(), STEPS, "paper_reference", run_four_wave, argv)
 
 

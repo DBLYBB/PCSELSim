@@ -9,7 +9,7 @@ dispersion, TM and cross-family coupling remain outside this scalar model.
 from dataclasses import dataclass
 import numpy as np
 from scipy.linalg import eigh_tridiagonal
-from .vertical import LayerStack, VerticalMode
+from .vertical import LayerStack, VerticalMode, sample_vertical_interval
 
 
 def solve_guided_te_modes(stack, wavelength_nm, dz_nm=5.0, max_modes=12):
@@ -49,8 +49,10 @@ def solve_guided_te_modes(stack, wavelength_nm, dz_nm=5.0, max_modes=12):
             field *= -1
         confinement = {}
         for name, start, stop in ranges:
-            mask = (z_nm >= start) & (z_nm <= stop)
-            overlap = float(integrate(field[mask] ** 2, z_nm[mask] * 1e-9))
+            layer_z, layer_density = sample_vertical_interval(
+                z_nm * 1e-9, field**2, start * 1e-9, stop * 1e-9
+            )
+            overlap = float(integrate(layer_density, layer_z))
             confinement[name] = confinement.get(name, 0) + overlap
         modes.append(
             VerticalMode(

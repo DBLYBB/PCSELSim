@@ -1,5 +1,7 @@
 # 晶体/Yb:YAG代码、原始文献与设计判断
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
@@ -59,7 +61,7 @@ d(U_excitation+U_photon)/dt
 
 ## 新默认结果：不能起振
 
-结果文件：`results/geometry_derived_ybyag_audit_20261008/00_feasibility_summary.json`。
+结果文件：`results/archive/legacy_before_20261021/geometry_derived_ybyag_audit_20261008/00_feasibility_summary.json`。
 默认500 μm方形器件、a=566 nm、圆孔半径68 nm、250 nm表面PC、4 μm增益层：
 
 | 指标 | 当前数值及意义 |
@@ -97,7 +99,7 @@ f_th约0.829，仍不满足默认泵浦。
 
 ## 39组泵浦初筛得到的实际经验
 
-`results/ybyag_pump_architectures_20261008/01_architecture_screen.csv`包含所有输入和结果。
+`results/archive/legacy_before_20261021/ybyag_pump_architectures_20261008/01_architecture_screen.csv`包含所有输入和结果。
 改变掺杂只做参数灵敏度，不冒充新浓度下已测量的光谱。
 
 对同一500×500×4 μm³有源体积，保持内部局域强度25 kW/cm²，法向入射面积是边入面积的125倍：

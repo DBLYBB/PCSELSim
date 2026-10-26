@@ -1,5 +1,7 @@
 # 半导体文献校对、外围代码逐文件审计与可加工设计评价
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
@@ -124,7 +126,7 @@
 - 晶格类型本身没有普遍优劣。优先设计低复杂度平滑孔（circle/ellipse），再在不能满足阈值/出光的情况下引入圆角三角和副孔；比较同波长、同层结构、同尺寸、同工艺规则。晶格旋转角只是光学干涉自由度，不是工艺改善的充分证据。
 - 原始理想推荐孔间距约39.5 nm时，应先评估系统误差margin而非宣称容易加工。新扫描分别给40/50 nm科研规则与60/65 nm较宽松规则，并显式减去每孔边缘/位置预算；这些是研究假设，最终以实际加工能力为准。
 
-本轮方形新数据写入 `results/square_fabrication_20261008/`。该目录的 `01_geometry_all.csv` 是完整几何筛查，`02_coarse.csv` 为预筛，`03_final.csv` 为多网格结果，`05_recommendation.json` 给具体规则下的候选；可运行 `python scripts/archive/legacy_20261008/optimize_square_fabrication_20261008.py`。修改候选或模型后须换结果目录，避免加载旧coarse缓存。
+本轮方形新数据写入 `results/archive/legacy_before_20261021/square_fabrication_20261008/`。该目录的 `01_geometry_all.csv` 是完整几何筛查，`02_coarse.csv` 为预筛，`03_final.csv` 为多网格结果，`05_recommendation.json` 给具体规则下的候选；可运行 `python scripts/archive/legacy_20261008/optimize_square_fabrication_20261008.py`。修改候选或模型后须换结果目录，避免加载旧coarse缓存。
 
 ## 7. 本轮方形平滑孔实算结果
 
@@ -163,8 +165,8 @@
 本轮没有改默认preset或为符合曲线调整参数。实际执行：
 
 ```bash
-E:/Anaconda/envs/env00/python.exe -u scripts/archive/legacy_20261008/run_custom_semiconductor_pcsel.py --output results/custom_semiconductor_audit_20261008 --only 01_parameters 02_lattice 03_k_space 04_layer_stack 05_band_structure 05_linear_modes 06_mode_atlas 08_time_domain
-E:/Anaconda/envs/env00/python.exe scripts/archive/legacy_20261008/analyze_semiconductor_audit_20261008.py --directory results/custom_semiconductor_audit_20261008
+E:/Anaconda/envs/env00/python.exe -u scripts/archive/legacy_20261008/run_custom_semiconductor_pcsel.py --output results/archive/legacy_before_20261021/custom_semiconductor_audit_20261008 --only 01_parameters 02_lattice 03_k_space 04_layer_stack 05_band_structure 05_linear_modes 06_mode_atlas 08_time_domain
+E:/Anaconda/envs/env00/python.exe scripts/archive/legacy_20261008/analyze_semiconductor_audit_20261008.py --directory results/archive/legacy_before_20261021/custom_semiconductor_audit_20261008
 ```
 
 主程序与最终后处理均正常退出。已跑参数/C矩阵报告、晶胞、k空间、纵向模、局部M–Γ–X能带、N=13/17/21/25冷腔、包络/晶胞/远场以及**全部四个默认电流×10 ns**。仅跳过07器件尺寸扫描；本轮未跑时间步/时域网格收敛、多随机种子、全部横模谱、温度自洽或实验光谱线宽认证。源代码保留新DC、噪声和吸收交换修正。

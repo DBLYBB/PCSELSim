@@ -12,14 +12,15 @@ from pathlib import Path
 
 from .config import load_config
 from .reproduce import reproduce
+from .run_output import default_output
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="pcselsim")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    run = subparsers.add_parser("reproduce", help="run the Inoue 2019 workflow")
+    run = subparsers.add_parser("reproduce", help="run the legacy calibrated-C Inoue comparison (not a geometry prediction)")
     run.add_argument("--config", default="configs/inoue2019.yaml")
-    run.add_argument("--output", default="results/inoue2019")
+    run.add_argument("--output", default=None)
     run.add_argument("--quick", action="store_true", help="short smoke test")
     return parser
 
@@ -30,7 +31,8 @@ def main(argv: list[str] | None = None) -> int:
         config = load_config(Path(args.config))
         if args.quick:
             config = config.quick()
-        reproduce(config, args.output)
+        project_root = Path(__file__).resolve().parents[2]
+        reproduce(config, args.output or default_output(project_root, "legacy/inoue2019"))
         return 0
     return 2
 

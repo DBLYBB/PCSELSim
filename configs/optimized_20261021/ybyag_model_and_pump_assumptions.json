@@ -1,0 +1,38 @@
+{
+  "design_entry": "configs/optimized_20261021/ybyag_finalist.json",
+  "model": "scalar four-wave square-lattice CWT, staggered finite K/M, real-frequency self-consistency, shared spatial Yb inversion",
+  "material_indices_nominal_constant": {
+    "YbYAG_gain": 1.8166,
+    "passive_YAG_PC_background": 1.8154,
+    "SiO2": 1.45,
+    "optional_SiN": 2.0,
+    "DBR_high": 2.10,
+    "DBR_low": 1.45,
+    "YAG_substrate": 1.8154,
+    "air": 1.0
+  },
+  "DBR": {
+    "pairs": 16,
+    "quarter_wave_design_nm": 1030.0,
+    "first_layer_from_substrate": "low",
+    "low_thickness_nm": 177.58620689655172,
+    "high_thickness_nm": 122.61904761904762
+  },
+  "pump_configurations": [
+    {"architecture": "edge_dual", "first_entry_power_definition": "sum of two internal beams", "active_face_um": [350.0, 0.5], "x_cells": 31},
+    {"architecture": "top_single", "top_passes": 1, "return_efficiency": 1.0, "active_face_um": [350.0, 350.0], "x_cells": 31},
+    {"architecture": "top_single", "top_passes": 20, "return_efficiency": 0.98, "active_face_um": [350.0, 350.0], "x_cells": 31},
+    {"architecture": "top_single", "top_passes": 100, "return_efficiency": 0.98, "active_face_um": [350.0, 350.0], "x_cells": 31}
+  ],
+  "spatial_rate_grid": {"x_cells": 31, "gain_z_cells": 24, "y_dimension": "averaged"},
+  "optical_numerics_for_final_19_pole_continuation": {"CWT_truncation": 12, "envelope_grid_points": 37, "vertical_step_nm": 1.0},
+  "independent_first_mode_cutoff_check": {"CWT_truncation": 16, "envelope_grid_points": 37, "vertical_step_nm": 1.0, "retained_band_edge_families": 4},
+  "spectroscopy_status": "nominal constant cross sections in design JSON; uncalibrated versus actual wavelength and temperature",
+  "physical_limits": [
+    "10 at.% Yb concentration and 0.95 ms lifetime require sample confirmation",
+    "edge pump assumes internal injection uniformly confined to a 0.5 um gain-layer face; no real coupling or 3D pump mode is solved",
+    "top multipass is a finite noncoherent ideal relay, not a modeled pump-frequency DBR boundary",
+    "the 19 continued poles do not exhaust every finer-grid lateral, TE/TM or nonlinear mode",
+    "no thermal, stress, gain-pulling or dynamic-stability solution"
+  ]
+}

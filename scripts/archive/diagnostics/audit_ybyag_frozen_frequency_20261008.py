@@ -12,10 +12,11 @@ ROOT = bootstrap_project()
 import numpy as np
 from scripts import run_ybyag_pcsel as main_program
 from pcselsim.stratified_optics import StratifiedLayer, StratifiedStack, local_green_kernel
+from pcselsim.run_output import prepare_output, write_provenance
 
 
 def run():
-    candidates = sorted(path for path in (ROOT/'results'/'ybyag_crystal_pcsel').iterdir()
+    candidates = sorted(path for path in (ROOT/'results'/'archive'/'legacy_before_20261021'/'ybyag_crystal_pcsel').iterdir()
                         if path.name[:8].isdigit() and (path/'finite_modes.npz').is_file()
                         and (path/'summary.json').is_file())
     source = candidates[-1]
@@ -93,7 +94,8 @@ def run():
             double_green_real_mode=float(updated[0].real),double_green_imag_mode=float(updated[0].imag),
             optical_theorem_relative_residual=updated[4])
         rows.append(row)
-    output = ROOT/'results'/'ybyag_crystal_pcsel'/'independent_family_audit_20261008'
+    output = prepare_output(ROOT/'results'/'current'/'legacy'/'frozen_frequency_audit_20261008', ROOT)
+    write_provenance(output, ROOT)
     with (output/'frozen_frequency_sensitivity.csv').open('w',newline='',encoding='utf-8-sig') as handle:
         writer = csv.DictWriter(handle,fieldnames=rows[0].keys());writer.writeheader();writer.writerows(rows)
     payload = dict(source_directory=str(source),frozen_Bragg_core_relative_recovery=float(recovery),

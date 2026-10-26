@@ -11,5 +11,7 @@ dist/
 results/*
 !results/README.md
 tmp/
+.chart-data-*/
+output/meeting_*/
 *.npz
 

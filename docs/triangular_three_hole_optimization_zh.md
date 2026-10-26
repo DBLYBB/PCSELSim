@@ -1,5 +1,7 @@
 # 三角六波主孔—双轴副孔三晶格设计与远场优化
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
@@ -49,7 +51,7 @@ exp[2*pi*i*(m*u+n*v)]
 6. 最近模式及中心暗模式的阈值间隔。
 
 完整候选数据在
-`results/custom_semiconductor_triangular_three_hole_optimized/01_screening.csv`，不要只看综合分数。
+`results/archive/legacy_before_20261021/custom_semiconductor_triangular_three_hole_optimized/01_screening.csv`，不要只看综合分数。
 
 ## 3. 当前获胜结构
 
@@ -132,7 +134,7 @@ scripts/archive/legacy_20261008/design_triangular_three_hole_pcsel.py
 python scripts\archive\legacy_20261008\design_triangular_three_hole_pcsel.py
 ```
 
-结果独立写入 `results/custom_semiconductor_triangular_three_hole_optimized`，不会覆盖圆孔六波或原有
+结果独立写入 `results/archive/legacy_before_20261021/custom_semiconductor_triangular_three_hole_optimized`，不会覆盖圆孔六波或原有
 双椭圆设计。重点文件如下：
 
 | 文件 | 内容 |

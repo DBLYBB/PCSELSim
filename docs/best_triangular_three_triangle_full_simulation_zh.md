@@ -1,5 +1,7 @@
 # 三角主孔—双三角副孔完整仿真
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
@@ -18,7 +20,7 @@ Inoue 半导体纵向层栈和 `300 μm × 300 μm` 方形器件上完成六波�
 Q、阈值电流和均匀泵浦小信号扫描。输出不会覆盖其他算例，默认保存到：
 
 ```text
-results/best_triangular_three_triangle_full
+results/archive/legacy_before_20261021/best_triangular_three_triangle_full
 ```
 
 ## 1. 直接运行

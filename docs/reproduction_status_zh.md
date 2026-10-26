@@ -1,5 +1,7 @@
 # Inoue 2019 复现状态与证据边界
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
@@ -11,7 +13,7 @@
 > `n_active/n_eff` 投影因子，附录 A10 的时间折射率项已改用 `n_active` 分母，
 > `carrier_substeps` 也已真正执行。下列原目录时域数值来自修正前版本；冷腔结果
 > 不受影响。修正后的独立重跑保存在
-> `results/custom_semiconductor_inoue2019_audit_corrected`，稳态功率变化小于 0.6%，
+> `results/archive/legacy_before_20261021/custom_semiconductor_inoue2019_audit_corrected`，稳态功率变化小于 0.6%，
 > 但高电流仍为单峰且空间分布偏心。完整审计见
 > [物理审计与代码地图](physics_audit_and_code_map_zh_en.md)。
 

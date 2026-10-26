@@ -45,6 +45,8 @@ class SimulationResult:
     final_field: np.ndarray
     dt_s: float
     metadata: dict[str, float | int | str]
+    probe_signals: np.ndarray | None = None  # (time, probe, basic wave)
+    probe_coordinates_um: np.ndarray | None = None  # (probe, x/y)
 
 
 class TimeDomainSolver:
@@ -92,9 +94,43 @@ class TimeDomainSolver:
             raise ValueError("signal_projection cannot be the zero vector")
         self.signal_projection /= norm
         self.coupling_half_step = expm(0.5j * self.vg * self.dt * self.coupling)
+        # The incoming characteristic is constrained throughout each local
+        # substep. Exponentiating the unconstrained 4x4 matrix and zeroing only
+        # afterwards permits a spurious excursion through that forbidden wave.
+        self.boundary_coupling_half_steps = []
+        for rows, columns, incoming in (
+            (slice(1, -1), 0, (0,)),
+            (slice(1, -1), -1, (1,)),
+            (0, slice(1, -1), (2,)),
+            (-1, slice(1, -1), (3,)),
+            (0, 0, (0, 2)),
+            (0, -1, (1, 2)),
+            (-1, 0, (0, 3)),
+            (-1, -1, (1, 3)),
+        ):
+            free = [wave for wave in range(4) if wave not in incoming]
+            kernel = np.zeros((4, 4), dtype=np.complex128)
+            block = np.ix_(free, free)
+            kernel[block] = expm(0.5j * self.vg * self.dt * self.coupling[block])
+            self.boundary_coupling_half_steps.append(((slice(None), rows, columns), kernel))
         self.current_shape = electrode_profile(self.x, self.y, config.device)
         self.center = n // 2
+        probe_axis = np.unique(np.rint(np.asarray((0.25, 0.5, 0.75)) * (n - 1)).astype(int))
+        self.probe_y, self.probe_x = np.meshgrid(probe_axis, probe_axis, indexing="ij")
+        self.probe_y = self.probe_y.ravel()
+        self.probe_x = self.probe_x.ravel()
+        self.probe_coordinates_um = np.column_stack(
+            (self.x[self.probe_x], self.y[self.probe_y])
+        ) * 1e6
         self.reference_carrier = self._reference_carrier_density()
+
+    @staticmethod
+    def _apply_incoming_boundary(field: np.ndarray) -> None:
+        """Enforce Liang's zero incoming waves in the physical field state."""
+        field[0, :, 0] = 0.0
+        field[1, :, -1] = 0.0
+        field[2, 0, :] = 0.0
+        field[3, -1, :] = 0.0
 
     def _reference_carrier_density(self) -> float:
         cfg = self.config
@@ -178,8 +214,12 @@ class TimeDomainSolver:
             # amplitude-rate correction. / 附录 A10：这是实数振幅率修正，不是相位失谐。
             gamma = temporal_index_rate_s(dcarrier_dt, cfg.optical)
             scalar_rate = scalar_rate - gamma
-        field = np.einsum("ab,bij->aij", self.coupling_half_step, field, optimize=True)
-        return field * np.exp(0.5 * self.dt * scalar_rate)[None, :, :]
+        coupled = np.einsum("ab,bij->aij", self.coupling_half_step, field, optimize=True)
+        for selector, kernel in self.boundary_coupling_half_steps:
+            coupled[selector] = np.einsum("ab,b...->a...", kernel, field[selector])
+        coupled *= np.exp(0.5 * self.dt * scalar_rate)[None, :, :]
+        self._apply_incoming_boundary(coupled)
+        return coupled
 
     def _carrier_rhs(
         self, carrier: np.ndarray, field: np.ndarray, current_density: np.ndarray
@@ -224,9 +264,31 @@ class TimeDomainSolver:
         sub_dt = self.dt / substeps
         for _ in range(substeps):
             rhs0 = self._carrier_rhs(updated, field, current_density)
-            predicted = np.maximum(updated + sub_dt * rhs0, 0.0)
+            predicted = updated + sub_dt * rhs0
+            if not np.isfinite(predicted).all():
+                raise FloatingPointError("Carrier Heun predictor became nonfinite")
+            # The continuous reservoir has nonnegative flow at N=0. A
+            # materially negative explicit stage is therefore unresolved time
+            # stepping, not a physical population to project silently to zero.
+            # 中文：连续方程在 N=0 不会流向负密度；显著负的 Heun 中间态表示
+            # 时间步未解析，必须失败而不能用截零伪造正定解。
+            scale = np.maximum(abs(updated), abs(sub_dt * rhs0))
+            if np.any(predicted < -128.0 * np.finfo(float).eps * scale):
+                raise FloatingPointError(
+                    "Carrier Heun predictor became negative; increase carrier_substeps or reduce cfl"
+                )
+            predicted = np.maximum(predicted, 0.0)
             rhs1 = self._carrier_rhs(predicted, field, current_density)
-            updated = np.maximum(updated + 0.5 * sub_dt * (rhs0 + rhs1), 0.0)
+            increment = 0.5 * sub_dt * (rhs0 + rhs1)
+            candidate = updated + increment
+            if not np.isfinite(candidate).all():
+                raise FloatingPointError("Carrier Heun corrector became nonfinite")
+            scale = np.maximum(abs(updated), abs(increment))
+            if np.any(candidate < -128.0 * np.finfo(float).eps * scale):
+                raise FloatingPointError(
+                    "Carrier Heun corrector became negative; increase carrier_substeps or reduce cfl"
+                )
+            updated = np.maximum(candidate, 0.0)
         return updated, (updated - old) / self.dt
 
     def _add_spontaneous_noise(
@@ -236,8 +298,11 @@ class TimeDomainSolver:
         if not cfg.numerics.noise or cfg.carrier.spontaneous_emission_factor <= 0.0:
             return
         tau = cfg.carrier.lifetime_ns * 1e-9
+        # Boundary nodes implement characteristic constraints, not emitting
+        # cells. Apply stochastic sources only in the device-grid interior.
+        interior = carrier[1:-1, 1:-1]
         spontaneous_photons = (
-            cfg.carrier.spontaneous_emission_factor * carrier / tau * self.dt
+            cfg.carrier.spontaneous_emission_factor * interior / tau * self.dt
         )
         # This is a reproducible, grid-aware seed model, not the paper's
         # unpublished Langevin-source normalization.  It supports turn-on and
@@ -245,20 +310,25 @@ class TimeDomainSolver:
         # 这是可重复的网格噪声种子，并非论文未公开的严格 Langevin 归一化；
         # 可用于启动与定性频谱，不能据此定量预测线宽。
         # Convert the injected photon density back to four complex field amplitudes.
-        unit_field = np.ones_like(field)
+        unit_field = np.ones((4, 1, 1), dtype=np.complex128)
         conversion = photon_density_m3(unit_field, cfg.carrier, cfg.optical)
         variance = np.maximum(spontaneous_photons / conversion, 0.0)
-        noise = rng.normal(size=field.shape) + 1j * rng.normal(size=field.shape)
+        noise_shape = (4, *interior.shape)
+        noise = rng.normal(size=noise_shape) + 1j * rng.normal(size=noise_shape)
         # ``conversion`` already includes all four unit-amplitude waves.
         # E|normal+i normal|^2=2, hence division by 2 injects the requested
         # photon density in expectation. Division by 8 would under-inject by 4.
         # conversion 已计入四波，复高斯模方期望为 2；无需再除四波数量。
-        field += noise * np.sqrt(variance / 2.0)[None, :, :]
+        field[:, 1:-1, 1:-1] += noise * np.sqrt(variance / 2.0)[None, :, :]
 
     def run(self, current_ratio: float) -> SimulationResult:
         """Run one current point and return raw traces plus the final fields.
 
-        ``current_ratio`` means ``I/I_th``. / ``current_ratio`` 表示 ``I/I_th``。
+        ``current_ratio`` means ``I/I_ref``, using the configured historical
+        ``threshold_current_A`` field. That reference can be a paper value;
+        the time solver does not independently establish its threshold.
+        中文：该比值是相对配置参考电流的 I/I_ref；配置字段保留旧名称，但输入
+        论文阈值电流不等于本模型已经独立求得相同起振阈值。
         """
         cfg = self.config
         rng = np.random.default_rng(cfg.numerics.seed + int(round(current_ratio * 1000)))
@@ -266,6 +336,7 @@ class TimeDomainSolver:
         field = np.zeros((4, n, n), dtype=np.complex128)
         # A tiny deterministic seed ensures reproducibility even when noise is disabled.
         field += (rng.normal(size=field.shape) + 1j * rng.normal(size=field.shape)) * 1e-9
+        self._apply_incoming_boundary(field)
         carrier = np.zeros((n, n), dtype=float)
         current_density = (
             current_ratio * cfg.device.threshold_current_A * self.current_shape
@@ -277,6 +348,7 @@ class TimeDomainSolver:
         center_carrier = np.empty(sample_count)
         power = np.empty(sample_count)
         signal = np.empty(sample_count, dtype=np.complex128)
+        probe_signals = np.empty((sample_count, self.probe_x.size, 4), dtype=np.complex128)
         sample_index = 0
         dcarrier_dt = self._carrier_rhs(carrier, field, current_density)
 
@@ -292,6 +364,7 @@ class TimeDomainSolver:
                     "a,aij->ij", self.signal_projection.conj(), field, optimize=True
                 )
                 signal[sample_index] = np.sum(projected)*self.dx**2
+                probe_signals[sample_index] = field[:, self.probe_y, self.probe_x].T
                 sample_index += 1
             if step == n_steps:
                 break
@@ -307,6 +380,7 @@ class TimeDomainSolver:
                 carrier, field, current_density
             )
             field = self._field_local_half_step(field, carrier, dcarrier_dt)
+            self._apply_incoming_boundary(field)
 
             if not np.all(np.isfinite(carrier)) or not np.all(np.isfinite(field)):
                 raise FloatingPointError(f"Non-finite state at step {step}")
@@ -334,6 +408,14 @@ class TimeDomainSolver:
                 "carrier_substeps": cfg.numerics.carrier_substeps,
                 "noise_model": "heuristic_grid_aware_seed_not_linewidth_calibrated",
                 "reference_carrier_cm3": self.reference_carrier * 1e-6,
+                "spectrum_probe_count": int(self.probe_x.size),
+                "probe_signal_axes": "time, probe, basic_wave_Rx_Sx_Ry_Sy",
+                "probe_spectrum_interpretation": (
+                    "incoherent FFT-power sum of sampled local four-wave envelopes; "
+                    "not total emitted or full-half-space optical spectrum"
+                ),
             },
+            probe_signals=probe_signals[:sample_index],
+            probe_coordinates_um=self.probe_coordinates_um.copy(),
         )
 

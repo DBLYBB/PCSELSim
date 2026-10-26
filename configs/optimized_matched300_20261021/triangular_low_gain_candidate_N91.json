@@ -1,0 +1,28 @@
+{
+  "three_hole_spec": {
+    "name": "actual_local_002",
+    "fill": 0.13815083467401562,
+    "main_share": 0.4191912028193474,
+    "satellite_balance": 0.4983139657601714,
+    "main_shape": "triangle",
+    "satellite1_shape": "circle",
+    "satellite2_shape": "circle",
+    "main_aspect": 1.5905561588704584,
+    "satellite1_aspect": 1.5055491499602796,
+    "satellite2_aspect": 1.3864903571084142,
+    "distance1": 0.41541090384125706,
+    "distance2": 0.4995414625108242,
+    "angle1_deg": -30.46051327139139,
+    "angle2_deg": 38.639211125671864,
+    "main_orientation_deg": 1.7207521870732307,
+    "satellite1_orientation_deg": 153.98674372583628,
+    "satellite2_orientation_deg": 109.0997969917953,
+    "rounding": 0.3943328827805817,
+    "lattice_nm": 320.83722775059374,
+    "triangle_samples_per_corner": 9
+  },
+  "actual_geometry_path": "results\\current\\matched300_20261021\\triangular\\formal_low_gain_N91\\actual_geometry_nm.json",
+  "qualification_status": "Superseded preliminary retune candidate: use triangular_finalists.json and canonical formal_low_gain_verified_N91, which add complete-coarse-guided spectral challenges and six independently frequency-closed poles.",
+  "summary_path": "results\\current\\matched300_20261021\\triangular\\formal_low_gain_N91\\summary.json",
+  "canonical_config_path": "configs/optimized_matched300_20261021/triangular_finalists.json"
+}

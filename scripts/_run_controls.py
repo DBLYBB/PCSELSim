@@ -10,6 +10,7 @@ from pathlib import Path
 from scripts._project_bootstrap import bootstrap_project
 
 PROJECT_ROOT = bootstrap_project()
+from pcselsim.run_output import default_output, prepare_output, write_provenance
 
 
 def execute_run(parameters, steps, family, runner, argv=None) -> None:
@@ -38,18 +39,24 @@ def execute_run(parameters, steps, family, runner, argv=None) -> None:
                            UNIT_CELL_FIELD_POINTS=41, FAR_FIELD_SAMPLES=61)
         parameters = replace(parameters, **updates)
         print("QUICK: workflow smoke test only / 粗网格短时间窗，不是论文验证")
-    root = PROJECT_ROOT / "results" / "pcsel" / family
-    output = args.output.resolve() if args.output else root / datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    output = args.output.resolve() if args.output else default_output(PROJECT_ROOT, "pcsel/" + family)
     plan = {"family": family, "output": str(output), "steps": switches,
             "parameters": asdict(parameters), "quick_smoke_test": args.quick}
     if args.dry_run:
         print(json.dumps(plan, indent=2, ensure_ascii=False, default=str))
         return
-    if output.exists() and any(output.iterdir()):
-        raise FileExistsError(f"Refusing to overwrite non-empty results: {output}; choose a new --output")
-    output.mkdir(parents=True, exist_ok=True)
+    output = prepare_output(output, PROJECT_ROOT)
+    write_provenance(output, PROJECT_ROOT)
     (output / "run_plan.json").write_text(json.dumps(plan, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
-    runner(parameters, switches, output)
+    (output / "run_status.json").write_text(json.dumps({"status": "running"}), encoding="utf-8")
+    try:
+        runner(parameters, switches, output)
+    except Exception as error:
+        (output / "run_status.json").write_text(json.dumps({
+            "status": "failed", "error_type": type(error).__name__, "error": str(error),
+            "finished_at": datetime.now().isoformat(),
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        raise
     (output / "run_status.json").write_text(json.dumps({
         "status": "completed", "workflow_only": True,
         "note": "Execution success is not a claim of physical convergence or paper reproduction.",

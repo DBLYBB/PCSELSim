@@ -1,10 +1,12 @@
 # Yb:YAG 晶体 PCSEL：固定周期多纵向模与材料损耗的独立复算
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 日期：2026-10-08。结论：当前架构可作为进一步研究的候选，但不能称为已验证的
 稳定单模 1030 nm 晶体 PCSEL，也不能把本报告中的瓦特数当作加工后输出承诺。
 
 复算脚本：`scripts/archive/diagnostics/audit_ybyag_families_20261008.py`。
-结果保存在 `results/ybyag_crystal_pcsel/independent_family_audit_20261008/`，
+结果保存在 `results/archive/legacy_before_20261021/ybyag_crystal_pcsel/independent_family_audit_20261008/`，
 没有覆盖四个正式主程序的结果目录。运行时导入正式晶体主程序的结构参数，但不
 修改其文件或常量。归档脚本不是日常主入口；日常运行仍用 `scripts/run_ybyag_pcsel.py`。
 

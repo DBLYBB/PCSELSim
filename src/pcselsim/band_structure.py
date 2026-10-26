@@ -94,13 +94,42 @@ def detuning_to_normalized_frequency(
     lattice_constant_nm: float,
     bragg_wavelength_nm: float,
     effective_index: float,
+    group_index: float | None = None,
+    *,
+    reference_wavenumber_per_m: float | None = None,
 ) -> np.ndarray:
-    """Convert ``delta=beta-beta0`` to ``a/lambda`` with frozen ``n_eff``."""
+    """Convert local CWT detuning to ``a/lambda`` with a stated frequency origin.
+
+    With the positive-time convention, ``exp(+i*(c/n_g)*delta*t)`` has
+    positive frequency shift ``Delta f=c*delta/(2*pi*n_g)``. The same
+    conversion must be used for band plots and time-domain spectra. Omitting
+    ``group_index`` preserves the historical frozen-effective-index conversion
+    for external callers; current geometry-driven workflows supply ``n_g``.
+
+    Without ``reference_wavenumber_per_m`` the input is a detuning relative
+    to the supplied wavelength, preserving the low-level legacy convention.
+    With physical ``beta0`` the input is an absolute CWT eigenvalue. Subtract
+    ``delta_ref=(beta_ref**2-beta0**2)/(2*beta0)`` and use its derivative
+    ``d delta/d omega=(beta_ref/beta0)*n_g/c``. This is required when C was
+    built at a fixed frequency that is not the unperturbed Bragg frequency.
+    中文：固定波长不等于 Bragg 点；必须减去同一参考频率的背景失谐，并用
+    平方失谐方程的正确导数。这里只是一阶局域色散，不重算完整 C(omega,k)。
+    """
     lattice_m = lattice_constant_nm * 1e-9
     base = lattice_constant_nm / bragg_wavelength_nm
-    return base + np.asarray(detuning_per_m).real * lattice_m / (
-        2.0 * np.pi * effective_index
-    )
+    frequency_index = effective_index if group_index is None else group_index
+    if not np.isfinite(frequency_index) or frequency_index <= 0.0:
+        raise ValueError("the frequency-conversion index must be finite and positive")
+    detuning = np.asarray(detuning_per_m).real
+    slope_factor = 1.0
+    if reference_wavenumber_per_m is not None:
+        beta0 = float(reference_wavenumber_per_m)
+        if not np.isfinite(beta0) or beta0 <= 0.0:
+            raise ValueError("reference_wavenumber_per_m must be finite and positive")
+        beta_ref = 2.0*np.pi*effective_index/(bragg_wavelength_nm*1e-9)
+        detuning = detuning-(beta_ref*beta_ref-beta0*beta0)/(2.0*beta0)
+        slope_factor = beta0/beta_ref
+    return base + detuning*lattice_m*slope_factor/(2.0*np.pi*frequency_index)
 
 
 def square_four_wave_band_diagram(
@@ -110,6 +139,8 @@ def square_four_wave_band_diagram(
     effective_index: float,
     q_max: float = 0.01,
     points: int = 201,
+    *,
+    group_index: float | None = None,
 ) -> BandDiagram:
     """Return the square-lattice ``M <- Gamma -> X`` four-wave dispersion.
 
@@ -136,7 +167,9 @@ def square_four_wave_band_diagram(
 
     eigenvalues, _ = track_complex_bands(matrix, q)
     frequency = detuning_to_normalized_frequency(
-        eigenvalues, lattice_constant_nm, bragg_wavelength_nm, effective_index
+        eigenvalues, lattice_constant_nm, bragg_wavelength_nm, effective_index,
+        group_index=group_index,
+        reference_wavenumber_per_m=2.0*np.pi/lattice_m,
     )
     return BandDiagram(
         wave_number_2pi_over_a=q,
@@ -146,7 +179,10 @@ def square_four_wave_band_diagram(
         left_endpoint="M",
         right_endpoint="X",
         approximation=(
-            "square four-wave CWT; M-Gamma-X path; frozen vertical mode near Gamma"
+            "square four-wave CWT; M-Gamma-X path; frozen vertical mode near Gamma; "
+            "physical reference detuning and squared-detuning slope; "
+            + ("group-index frequency conversion" if group_index is not None
+               else "legacy effective-index frequency conversion")
         ),
     )
 

@@ -120,7 +120,7 @@ RATE_END_TIME_MS = 5.0
 RATE_SAMPLES = 1000
 
 
-OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "geometry_derived_ybyag_audit_20261008"
+OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "current" / "legacy" / "geometry_derived_ybyag_audit_20261008"
 STEPS = {
     "01_parameters": True,
     "02_lattice": True,

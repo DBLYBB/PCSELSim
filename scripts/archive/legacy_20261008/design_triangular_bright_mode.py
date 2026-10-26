@@ -65,7 +65,7 @@ FINAL_RADIUS_CELLS = (7, 9, 11)
 BRIGHT_CENTER_MINIMUM = 0.45
 SINGULAR_CENTER_MAXIMUM = 0.12
 OUTPUT_DIRECTORY = (
-    PROJECT_ROOT / "results" / "custom_semiconductor_triangular_designed_bright_mode"
+    PROJECT_ROOT / "results" / "current" / "legacy" / "custom_semiconductor_triangular_designed_bright_mode"
 )
 
 PC_LAYER_NAME = "PC"

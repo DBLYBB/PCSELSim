@@ -1,0 +1,108 @@
+{
+  "schema": "pcselsim.matched300_comparison.v1",
+  "date": "2026-10-21",
+  "status": "completed_best_tested_four_cavities",
+  "reference": {
+    "doi": "10.1103/PhysRevB.99.035308",
+    "matched_quantity": "Fig. 2(d) finite photonic-crystal square side L = 300 micrometres",
+    "note": "This is the finite cavity size, not the 400 micrometre time-domain numerical window used by the earlier reproduction."
+  },
+  "aperture": {
+    "shape": "square",
+    "side_um": 300.0,
+    "geometrical_area_um2": 90000.0,
+    "required_for": [
+      "semiconductor_square",
+      "semiconductor_triangular",
+      "YbYAG_square",
+      "YbYAG_triangular"
+    ]
+  },
+  "motifs": {
+    "square": "Central main hole at the origin plus one satellite near a cell diagonal; nonzero areas, independently varied size, shape and orientation; periodic images included in gap checks.",
+    "triangular": "Central main hole plus one satellite in each of two diagonal primitive directions, nominally -30 and +30 degrees; distances, offsets, area shares, shapes and orientations varied; central main hole no smaller in area than either satellite."
+  },
+  "semiconductor": {
+    "target_Bragg_wavelength_nm": 950.0,
+    "layers": "Current complete Inoue Table-I stack, including PC190/GaAs110/spacer25 nm and three 10 nm wells plus three 20 nm barriers, with common claddings.",
+    "internal_intensity_loss_cm_inverse": 5.0,
+    "period": "Initial screens tune the frozen Bragg reference to 950 nm. Final designs tune the physical period so that the actual lowest frequency-closed pole lies within 0.05 nm of 950 nm, then fix that period while closing competing poles. Both reference and actual wavelengths must be reported.",
+    "threshold_definition": "g_th = (2 alpha_field + alpha_internal_intensity)/(Gamma_active n_active/n_eff); add the material intensity loss once.",
+    "comparison": "Same footprint, nominal wavelength, materials and vertical layer thicknesses. Different optimized motifs and filling fractions remain design variables."
+  },
+  "YbYAG": {
+    "target_Bragg_wavelength_nm": 1030.0,
+    "gain_layer_nm": 500.0,
+    "PC_layer_nm": 120.0,
+    "SiO2_spacer_nm": 2000.0,
+    "DBR_pairs": 16,
+    "nominal_doping_at_percent": 10.0,
+    "internal_intensity_loss_cm_inverse": 0.1,
+    "material_status": "Nominal cross sections and material data, not measured spectroscopy.",
+    "comparison": "Use the same vertical stack, gain model, pump definition and footprint for both lattices. Tune the final actual first frequency-closed pole to 1030 +/- 0.05 nm and then fix the period for its competitors. Report total internal first-entry pump power, with shared inversion and reabsorption. Top single-pass is a common pump-architecture comparison; ideal narrow-edge pumping is conditional.",
+    "implementation": "True four-wave square and six-wave triangular CWT with the same layered outgoing Green-function and flux convention."
+  },
+  "beam": {
+    "quantity": "Actual eigenmode complex vector far field, intensity |Ex|^2+|Ey|^2",
+    "angular_half_window_deg": 1.0,
+    "basic_targets": {
+      "maximum_axial_ratio": 1.1,
+      "minimum_center_to_peak": 0.9,
+      "maximum_radial_anisotropy_l2": 0.15
+    },
+    "preferred_targets": {
+      "maximum_axial_ratio": 1.05,
+      "minimum_center_to_peak": 0.98,
+      "maximum_radial_anisotropy_l2": 0.1
+    },
+    "additional_checks": [
+      "one half-maximum connected component including the normal",
+      "source envelope angular sampling",
+      "side lobes and encircled energy within the evaluated window"
+    ]
+  },
+  "mode_selection": {
+    "relative_gain_gap": "g_second/g_first - 1, using actual independently found finite transverse modes rather than just Gamma-family representatives.",
+    "preferred_gap_fraction": 0.1,
+    "gap_interpretation": "Semiconductor material-gain gaps are distinct from current gaps under the nonlinear gain law. YAG zero-photon shared-inversion branch-crossing gaps are distinct from saturated higher-mode turn-on powers; use the separate CW competition results for the latter.",
+    "selection": "Keep a Pareto set for low first threshold, isolation and circular bright-center output. Report failure when no candidate meets every target.",
+    "validation": [
+      "coarse complete discrete spectrum where tractable",
+      "higher-grid multi-shift spectral challengers",
+      "high-order and vertical-step sensitivity",
+      "fixed-period frequency closure",
+      "mode/eigenfield residuals",
+      "local geometry perturbations"
+    ],
+    "scope": "Best tested candidates within stated search ranges, not a certified global optimum, exhaustive continuum spectrum or proof of dynamic single-mode lasing."
+  },
+  "fabrication_assumption": {
+    "minimum_gap_nm": 40.0,
+    "minimum_caliper_nm": 50.0,
+    "edge_bias_budget_nm": 3.0,
+    "placement_budget_nm": 3.0,
+    "minimum_corner_radius_nm": 5.0,
+    "status": "Common research design rules only; not a foundry certification. Exploratory cases using weaker rules must be labeled separately."
+  },
+  "polarization": {
+    "source": "pcselsim.polarization.polarization_metrics and stokes_maps",
+    "convention": "S3 = +2 Im(Ex Ey*), with no right/left handedness label",
+    "outputs": [
+      "on-axis Stokes",
+      "angularly integrated coherency",
+      "0.2 degree core Stokes",
+      "DOLP",
+      "signed circular fraction",
+      "polarization-axis and masked Stokes maps"
+    ],
+    "scope": "Circular intensity and circular polarization are distinct. Angularly integrated polarization describes spatial mixing, not temporal depolarization."
+  },
+  "storage": "Scanning stages retain compact parameter/metric CSV and JSON. Preserve final complex fields, portable configurations and compact failed-counterexample evidence. No presentation assets belong in PCSELSim.",
+  "completed_local_date": "2026-10-22",
+  "outcome_notes": {
+    "semiconductor": "Both primary candidates meet preferred nominal bright/circular beam and >=10% tested cold material-gain gap; current gaps remain below 1%.",
+    "YbYAG_square": "Nominal beam meets preferred targets, but 3.589% tested cold-gain gap fails preferred 10% isolation; static CW is already multimode at sampled 1.25x threshold.",
+    "YbYAG_triangular": "Selected bright-round v5 meets nominal preferred beam and 11.961% tested cold-gain gap. Static CW single first mode at sampled 1.05/1.25/1.5x, two at 2/3/4x. Isolation and radial-L2 alternatives retained.",
+    "scope": "Bounded searches, finite mode sets and nominal material model. Fabrication robustness and dynamic single-mode stability are not established."
+  }
+}

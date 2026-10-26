@@ -8,7 +8,7 @@ This is still a TE/weak-modulation CWT approximation, not full-vector FEM/FDTD.
 
 from dataclasses import dataclass, replace
 import numpy as np
-from .three_d_cwt import BASIC_ORDERS, build_geometry_coupling
+from .three_d_cwt import BASIC_ORDERS, build_geometry_coupling, _roundoff_hermitian
 from .stratified_optics import local_green_kernel
 from .coupling import validate_passive_coupling
 
@@ -22,7 +22,7 @@ class ReflectorCoupling:
     optical_theorem_residual: float
 
     def side_power_losses(self, fields):
-        """2*<F|L_side|F>/<F|F>; inverse metres, POWER not amplitude loss."""
+        """2*<F|L_side|F>/<F|F>; m^-1 power loss / 功率损耗为振幅损耗的两倍。"""
         flat = np.asarray(fields).reshape(4, -1)
         norm = np.sum(abs(flat) ** 2)
         if not np.isfinite(norm) or norm <= 0:
@@ -41,6 +41,8 @@ def build_reflector_coupling(
     lattice_constant_nm,
     wavelength_guess_nm,
     settings,
+    *,
+    fixed_wavelength_nm=None,
 ):
     base = build_geometry_coupling(
         cell,
@@ -49,6 +51,7 @@ def build_reflector_coupling(
         lattice_constant_nm,
         wavelength_guess_nm,
         settings,
+        fixed_wavelength_nm=fixed_wavelength_nm,
     )
     hosts = [i for i, l in enumerate(radiation_stack.layers) if l.name == pc_layer_name]
     if (
@@ -67,6 +70,7 @@ def build_reflector_coupling(
         )
     # Translate the original padded/centred vertical coordinates to physical
     # finite-radiation-stack coordinates. PC centre must match in both stacks.
+    # 将导模填充坐标转为实际辐射膜系坐标；两套模型必须指向同一物理 PC 层。
     guided_start = guided_stack.padding_um * 1e-6
     for layer in guided_stack.layers:
         if layer.name == pc_layer_name:
@@ -91,6 +95,8 @@ def build_reflector_coupling(
     source_gram = source.conj().T @ source
     prefactor = k0**4 / (2 * beta)
     crad = -prefactor * integral * source_gram
+    # Use this same outgoing kernel for damping and port flux, including the DBR.
+    # 阻尼与上下通量共用同一个含 DBR 的出射核，不能再额外乘镜面增强系数。
     up = (
         prefactor * max(outgoing.top_admittance_m.real, 0) * abs(top) ** 2 * source_gram
     )
@@ -104,6 +110,8 @@ def build_reflector_coupling(
     residual = float(
         np.linalg.norm(rad_loss - up - down) / max(np.linalg.norm(rad_loss), 1e-30)
     )
+    # This balance assumes lossless films; absorption needs its own operator.
+    # 此通量守恒以无吸收膜层为前提，吸收损耗需要独立算子，不能混入出射通量。
     if not kernel.lossless:
         raise ValueError(
             "Absorbing films require a separate absorption-loss operator before rate coupling"
@@ -127,27 +135,31 @@ def build_reflector_coupling(
     probe_rad = matrix[probe] @ weighted
     response_x[(0, 0)] = k0**2 * probe_rad * source[1]
     response_y[(0, 0)] = k0**2 * probe_rad * source[0]
+    radial_green = {}
     for m in range(-settings.truncation_order, settings.truncation_order + 1):
         for n in range(-settings.truncation_order, settings.truncation_order + 1):
             order2 = m * m + n * n
             if order2 <= 1:
                 continue
-            high = local_green_kernel(
-                radiation_stack,
-                host,
-                base.bragg_wavelength_nm,
-                q_parallel_per_m=np.sqrt(order2) * beta,
-            )
-            if (
-                high.top_admittance_m.real > 1e-6
-                or high.bottom_admittance_m.real > 1e-6
-            ):
-                raise ValueError(
-                    "Open high-order exterior channels require an extended lossy C2D model"
+            if order2 not in radial_green:
+                high = local_green_kernel(
+                    radiation_stack,
+                    host,
+                    base.bragg_wavelength_nm,
+                    q_parallel_per_m=np.sqrt(order2) * beta,
                 )
-            high_matrix = high.matrix(z)
-            integ = weighted.conj() @ high_matrix @ weighted
-            probe_integ = high_matrix[probe] @ weighted
+                if (
+                    high.top_admittance_m.real > 1e-6
+                    or high.bottom_admittance_m.real > 1e-6
+                ):
+                    raise ValueError(
+                        "Open high-order exterior channels require an extended lossy C2D model"
+                    )
+                high_matrix = high.matrix(z)
+                integ = weighted.conj() @ high_matrix @ weighted
+                probe_integ = high_matrix[probe] @ weighted
+                radial_green[order2] = integ, probe_integ
+            integ, probe_integ = radial_green[order2]
             coeff = np.array([xi(m - r, n - s) for r, s in BASIC_ORDERS])
             mu, mu_probe = k0**2 * coeff * integ, k0**2 * coeff * probe_integ
             nu = -coeff * base.pc_confinement / base.average_pc_epsilon
@@ -168,7 +180,7 @@ def build_reflector_coupling(
                 c2d[row] += (
                     -(k0**2) / (2 * beta) * xi(p - m, q - n) * (sy if row < 2 else sx)
                 )
-    c2d = (c2d + c2d.conj().T) / 2
+    c2d = _roundoff_hermitian(c2d, label="reflected C2D")
     coupling = base.c1d_m + crad + c2d
     validate_passive_coupling(coupling, atol=1e-7)
     values, vectors = np.linalg.eig(coupling)

@@ -1,5 +1,7 @@
 # 2026-10-08 文献、代码与激光器设计总评
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
@@ -31,7 +33,7 @@
 - [半导体：载流子、谱线、入口/测试/配置逐文件评价及国内外论文](audit_semiconductor_literature_20261008_zh.md)
 - [晶体：归一化、泵浦、制造文献及可行性](audit_crystal_literature_20261008_zh.md)
 
-机器清单为`results/robust_design_20261008/01_source_inventory.json`，记录src/scripts/tests/configs
+机器清单为`results/archive/legacy_before_20261021/robust_design_20261008/01_source_inventory.json`，记录src/scripts/tests/configs
 的语法检查与SHA256，共22个src、25个脚本、21个测试文件和1个配置。`01_source_inventory_at_launch.json`
 保留主扫描启动快照；后来增加运行清单、输入归档、CLI输出路径与图注，不改变该次扫描的光学
 求解。语法正确与哈希可追溯不构成物理认证。
@@ -42,7 +44,7 @@
 制造公共模块和数值诊断模块的算法、限制见分项报告。
 
 Zotero只读扫描发现81份PDF、78个不同SHA256及3组完全相同内容副本。PDF元数据/首两页DOI候选
-索引保存在`results/audit_20261008/literature_library_index.json`。没有改动文献、附件或Zotero数据库，
+索引保存在`results/archive/legacy_before_20261021/audit_20261008/literature_library_index.json`。没有改动文献、附件或Zotero数据库，
 也没有声称81份均全文审读。重点论文及全文/题录核对程度在分项报告表中逐项标明。
 
 ## 3. 会改变设计方向的文献证据
@@ -94,7 +96,7 @@ N=25实际损耗3.93839cm⁻¹，其中几何辐射投影0.50001、迎风体数�
 ### 5.2 方形：平滑双孔是更简单的加工基线
 
 本轮定义66组，53组通过名义几何科研规则，4组以D=10、dz=3nm、N=13/17/21复算。
-结果在`results/square_fabrication_20261008`。新方形终选表的alpha是外推值，场使用N=21，
+结果在`results/archive/legacy_before_20261021/square_fabrication_20261008`。新方形终选表的alpha是外推值，场使用N=21，
 二者不能当成同一个实际本征对。
 
 容易加工档位的候选为`smooth_F0p14_d0p45_w0p42_a1p00`：a=277nm、两个圆孔，面积份额42%/58%，
@@ -167,7 +169,7 @@ python scripts/archive/legacy_20261008/evaluate_ybyag_pump_architectures.py
 ```
 
 三角主扫描有5个STEPS开关，`--quick`只跑缩小流程。几何/原始场/耦合矩阵/视窗/公差/源哈希均有归档。
-半导体完整时域校对另存`results/custom_semiconductor_audit_20261008`，不是把旧图复制到新目录。
+半导体完整时域校对另存`results/archive/legacy_before_20261021/custom_semiconductor_audit_20261008`，不是把旧图复制到新目录。
 本轮实际完成四电流各10ns，31×31时域网格、dt约125.05fs；论文Ith=.7A仍是输入基准，不是新的
 预测阈值。末1ns功率统计与末2ns的A投影谱如下：
 

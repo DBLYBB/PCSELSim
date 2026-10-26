@@ -1,11 +1,12 @@
 """Physical observables for the Inoue four-wave normalization.
 
 English: photon density follows Eq. (10), radiated power follows Eq. (9), and
-spectra are FFTs of a coherent modal projection.  The FFT linewidth is limited
+spectra compare a coherent modal projection with a sum of local-channel FFT
+powers.  The FFT linewidth is limited
 by the simulated time window and by the approximate spontaneous-noise model.
 
 中文：光子密度对应 Inoue 式 (10)，面辐射功率对应式 (9)，频谱由选定模式的
-相干投影做 FFT 得到。谱线宽度同时受时间窗与近似自发辐射噪声限制，不能直接
+相干投影及局部探针非相干功率和做 FFT 得到。谱线宽度同时受时间窗与近似自发辐射噪声限制，不能直接
 当作实验绝对线宽。
 """
 
@@ -41,10 +42,34 @@ def photon_density_m3(
 def radiated_power_W(
     field: np.ndarray, coupling_m: np.ndarray, dx_m: float, optical: OpticalConfig
 ) -> float:
-    """Surface-radiated power from Eq. (9) / 由式 (9) 积分得到面发射功率。"""
+    """Surface-radiated power from Eq. (9), rejecting nonpassive densities.
+
+    Only floating-point roundoff is clipped. A materially negative quadratic
+    form signals an invalid passive-radiation input and must not be converted
+    into an apparently valid zero output.
+    中文：只容许浮点舍入量级的负值归零；实质负辐射功率必须报错，不能用
+    截断掩盖非被动耦合或错误归一化。
+    """
+    field = np.asarray(field, dtype=np.complex128)
+    coupling_m = np.asarray(coupling_m, dtype=np.complex128)
+    if field.ndim != 3 or field.shape[0] != 4 or coupling_m.shape != (4, 4):
+        raise ValueError("Four-wave fields and a 4x4 coupling matrix are required")
+    if not np.isfinite(field).all() or not np.isfinite(coupling_m).all():
+        raise ValueError("Radiation fields and coupling must be finite")
+    if not np.isfinite(dx_m) or dx_m <= 0.0:
+        raise ValueError("Radiation quadrature spacing must be finite and positive")
     c_phi = np.einsum("ab,bij->aij", coupling_m, field, optimize=True)
     quadratic = np.sum(np.conj(field) * c_phi, axis=0)
-    density = 4.0 * epsilon_0 * optical.effective_index * c * np.imag(quadratic)
+    if not np.isfinite(quadratic).all():
+        raise FloatingPointError("Radiated-power quadratic form overflowed or became nonfinite")
+    imaginary = np.imag(quadratic)
+    # The matrix-vector product has four complex terms. Scale the tolerance
+    # by its physical quadratic-form bound, not an arbitrary power in watts.
+    scale = np.linalg.norm(coupling_m, ord=2) * np.sum(abs(field)**2, axis=0)
+    tolerance = 128.0 * np.finfo(float).eps * scale
+    if np.any(imaginary < -tolerance):
+        raise ValueError("Materially negative radiated-power density: nonpassive coupling or invalid field")
+    density = 4.0 * epsilon_0 * optical.effective_index * c * imaginary
     return float(np.sum(np.maximum(density, 0.0)) * dx_m * dx_m)
 
 
@@ -85,4 +110,43 @@ def wavelength_spectrum(
         power = power / np.max(power)
     order = np.argsort(wavelength_nm)
     return wavelength_nm[order], power[order]
+
+
+def incoherent_wavelength_spectrum(
+    signals: np.ndarray,
+    dt_s: float,
+    center_wavelength_nm: float,
+    window: bool = True,
+    remove_mean: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Sum local-channel FFT powers without spatial coherent cancellation.
+
+    Axis zero is time; all remaining axes are independent sampled channels.
+    The result is normalized arbitrary-unit spectral power. Sparse field probes
+    can reveal modes missed by a spatial integral but do not constitute the
+    total surface-emission or full-half-space optical spectrum.
+    """
+    signals = np.asarray(signals, dtype=np.complex128)
+    if signals.ndim < 2 or signals.shape[0] < 2 or signals.size == 0:
+        raise ValueError("signals must contain >= 2 time samples and at least one channel")
+    if not np.all(np.isfinite(signals)):
+        raise ValueError("sampled signals must be finite")
+    if not np.isfinite(dt_s) or dt_s <= 0.0:
+        raise ValueError("dt_s must be finite and positive")
+    if not np.isfinite(center_wavelength_nm) or center_wavelength_nm <= 0.0:
+        raise ValueError("center_wavelength_nm must be finite and positive")
+    channels = signals.reshape(signals.shape[0], -1)
+    if remove_mean:
+        channels = channels - np.mean(channels, axis=0, keepdims=True)
+    if window:
+        channels = channels * np.hanning(channels.shape[0])[:, None]
+    power = np.sum(np.abs(np.fft.fft(channels, axis=0))**2, axis=1)
+    frequency = c/(center_wavelength_nm*1e-9) + np.fft.fftfreq(channels.shape[0], dt_s)
+    valid = frequency > 0.0
+    wavelength = c/frequency[valid]*1e9
+    power = power[valid]
+    if np.max(power) > 0.0:
+        power = power/np.max(power)
+    order = np.argsort(wavelength)
+    return wavelength[order], power[order]
 

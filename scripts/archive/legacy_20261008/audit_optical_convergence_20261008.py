@@ -34,7 +34,7 @@ from pcselsim.triangular_finite import (
 
 
 def main():
-    output = PROJECT_ROOT / "results" / "audit_20261008" / "optical_convergence"
+    output = PROJECT_ROOT / "results" / "current" / "legacy" / "audit_20261008" / "optical_convergence"
     output.mkdir(parents=True, exist_ok=True)
     candidate, cell, layers, model = build_model()
     geometry_fingerprint = hashlib.sha256(

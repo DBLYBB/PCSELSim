@@ -17,6 +17,18 @@ import numpy as np
 from scipy.special import j1
 
 
+def _validate_lossless_epsilon(value: float, name: str) -> None:
+    """Reject unsupported absorption before lossless CWT projections.
+
+    Complex dielectric constants require an absorption operator and a lossy
+    vertical problem. Taking their real part would silently remove physics.
+    本后端仅支持实、正、有限介电常数；吸收/金属需扩展模型，不可悄悄取实部。
+    """
+    epsilon = complex(value)
+    if not np.isfinite(epsilon) or epsilon.real <= 0.0 or epsilon.imag != 0.0:
+        raise ValueError(f"{name} must be real, positive and finite; absorbing/metallic inclusions need an extended optical model")
+
+
 @dataclass(frozen=True)
 class Ellipse:
     """Ellipse in fractional-cell coordinates / 以晶格常数归一化的椭圆孔。"""
@@ -25,6 +37,13 @@ class Ellipse:
     radii: tuple[float, float]
     angle_deg: float = 0.0
     epsilon: float = 1.0
+
+    def __post_init__(self) -> None:
+        _validate_lossless_epsilon(self.epsilon, "inclusion epsilon")
+        if (np.shape(self.center) != (2,) or np.shape(self.radii) != (2,)
+                or not np.isfinite(self.center).all() or not np.isfinite(self.radii).all()
+                or min(self.radii) <= 0.0 or not np.isfinite(self.angle_deg)):
+            raise ValueError("Ellipse requires finite 2-D center/angle and positive finite radii")
 
 
 @dataclass(frozen=True)
@@ -42,6 +61,13 @@ class PolygonInclusion:
     def __post_init__(self) -> None:
         if len(self.vertices) < 3:
             raise ValueError("A polygon inclusion needs at least three vertices")
+        _validate_lossless_epsilon(self.epsilon, "inclusion epsilon")
+        points = np.asarray(self.vertices, dtype=float)
+        if points.shape != (len(self.vertices), 2) or not np.isfinite(points).all():
+            raise ValueError("Polygon vertices must be finite 2-D coordinates")
+        area = np.sum(points[:, 0]*np.roll(points[:, 1], -1)-np.roll(points[:, 0], -1)*points[:, 1])
+        if area == 0.0:
+            raise ValueError("Polygon inclusion must have nonzero signed area")
 
 
 def polygon_fourier_integral(
@@ -61,20 +87,17 @@ def polygon_fourier_integral(
 
     wave = 2.0*np.pi*np.asarray([m, n], dtype=float)
     wave2 = float(np.dot(wave, wave))
-    value = 0.0j
-    for start, stop in zip(points, np.roll(points, -1, axis=0), strict=True):
-        edge = stop-start
-        phase_step = float(np.dot(wave, edge))
-        if abs(phase_step) < 1e-13:
-            edge_average = 1.0+0.0j
-        else:
-            edge_average = np.expm1(1j*phase_step)/(1j*phase_step)
-        normal_ds = np.asarray([edge[1], -edge[0]])
-        value += (
-            np.dot(wave, normal_ds)
-            * np.exp(1j*np.dot(wave, start))
-            * edge_average
-        )
+    # All edge terms use the same exact boundary-integral formula. Vectorize
+    # only the independent edge evaluations; do not cache between geometries
+    # or change the small-phase limit. The final sum can differ from the former
+    # sequential accumulation at floating-point roundoff.
+    edges = np.roll(points, -1, axis=0)-points
+    phase_step = edges @ wave
+    edge_average = np.ones(len(points), dtype=complex)
+    regular = abs(phase_step) >= 1e-13
+    edge_average[regular] = np.expm1(1j*phase_step[regular])/(1j*phase_step[regular])
+    normal_ds = np.column_stack((edges[:, 1], -edges[:, 0]))
+    value = np.sum((normal_ds @ wave)*np.exp(1j*(points @ wave))*edge_average)
     return complex(value/(1j*wave2))
 
 
@@ -84,6 +107,9 @@ class SquareLatticeCell:
 
     background_epsilon: float
     inclusions: tuple[Ellipse | PolygonInclusion, ...]
+
+    def __post_init__(self) -> None:
+        _validate_lossless_epsilon(self.background_epsilon, "background epsilon")
 
     def fourier_epsilon(self, m: int, n: int) -> complex:
         """Return the (m,n) Fourier coefficient of epsilon(x,y).

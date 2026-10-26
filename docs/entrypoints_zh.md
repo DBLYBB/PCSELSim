@@ -1,6 +1,8 @@
 # 三个半导体主程序：从点击运行到理解输出
 
-本轮只整理入口、输入参数、步骤开关和图片呈现，复用 `src/pcselsim/` 中已审计的物理后端。旧程序并未删除，移到 `scripts/archive/legacy_20261008/` 保留历史功能与导入关系；旧结果也没有删除或覆盖。Yb:YAG 另见 `scripts/run_ybyag_pcsel.py` 及晶体专题文档。
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
+本文说明当前入口、输入参数、步骤开关和输出。2026-10-21 同时修正了层栈、界面积分、有限离散与远场口径；不是单纯的脚本整理。旧程序移到 `scripts/archive/legacy_20261008/` 保留历史功能与导入关系；旧结果已完整归档。Yb:YAG 另见 `scripts/run_ybyag_pcsel.py` 及[本轮修正与验证](corrections_20261021_zh.md)。
 
 ## 1. 在 PyCharm 中点哪个文件
 
@@ -46,7 +48,7 @@ E:\Anaconda\envs\env00\python.exe scripts/run_triangular_three_hole.py --quick -
 | `03_k_space` | 保留的基本 Bloch 波与倒格矢 | 正方四波、三角六波由各自倒格子推导，不是仅增加两条波 |
 | `04_layer_stack/04_vertical_mode` | 一维标量 TE0、neff/ng、PC 与有源层限制因子 | 单一纵向分支近似；并非多纵模全矢量 Maxwell 解 |
 | `05_band_structure` | C + 波矢失谐矩阵本征值 → a/λ | 当前为 Γ 附近沿 M–Γ–X 方向的小失谐能带，**不是**跨整个 Brillouin 区的全带计算；三角 X 为既有命名中的 K 方向 |
-| 四波 `05_linear_modes` / 六波 `08_finite_modes` | 有限器件开放入射边界、稀疏本征求解、多网格外推 | Liang 有限区域耦合波方法；每个 Γ 带边族保留一个连接模，四个/六个结果**不等于全横模谱** |
+| 四波 `05_linear_modes` / 六波 `08_finite_modes` | 零入射边界、交错广义本征求解、最细实际本征对及多网格敏感性 | Liang 有限区域耦合波方法；小矩阵可用完整广义谱，大矩阵用 shift-invert。仅显式选择 `legacy_upwind` 时保留旧外推口径。四个/六个连接态**不等于全横模谱** |
 | `06_mode_atlas` / 六波 `07_band_edge_states`, `09_mode_atlas` | 所有保留模的器件包络、晶胞电场与辐射图 | 微观周期场与宏观慢变包络的重构须区分 |
 | `06_far_field_zoom` / 六波 `10_best_far_field`, `10_far_field_zoom` | 复矢量辐射场 Fourier 变换；主图和 ±0.2° 局部显示 | Liang 辐射远场关系；没有强加中心涡旋或 Gaussian 因子。Zoom 只裁切显示，RMS/能量仍来自原采样窗 |
 | 四波 `07_length_sweep` | 多器件尺寸、多网格冷腔损耗 | 同一模式族及数值精度的尺寸变化，不是一次本征值乘比例 |
@@ -70,34 +72,34 @@ E:\Anaconda\envs\env00\python.exe scripts/run_paper_reproduction.py --only 00_fa
 E:\Anaconda\envs\env00\python.exe scripts/run_paper_reproduction.py --quick --only 01_parameters 05_linear_modes 08_time_domain
 ```
 
-默认每次存到 `results/pcsel/paper_reference/时间戳`、`square_double_hole/时间戳` 或 `triangular_three_hole/时间戳`。可以 `--output 新目录`，但程序拒绝非空目录，避免覆盖原结果。`run_plan.json` 保存当次参数与开关；`run_status.json` 出现且为 `completed` 只说明该流程没有抛异常，不说明物理收敛。中途报错可能留下部分图片，不能按图片数量判定运行成功。
+默认每次存到 `results/current/pcsel/paper_reference/时间戳`、`results/current/pcsel/square_double_hole/时间戳` 或 `results/current/pcsel/triangular_three_hole/时间戳`。可以 `--output 新目录或已有空目录`，但程序拒绝非空目录和历史 `archive`，避免覆盖原结果。`run_plan.json` 保存当次参数与开关，`source_provenance.json` 保存启动源码哈希；`run_status.json` 的 `completed` 只说明该流程没有抛异常，不说明物理收敛。中途报错可能留下部分图片，不能按图片数量判定运行成功。
 
-`05_cold_cavity_arrays.npz/08_cold_cavity_arrays.npz` 保存复场和网格序列；`05_numerical_quality.json/08_numerical_quality.json` 同时给外推损耗、最细网格损耗、敏感性与状态。遇到 `grid_sensitive`，不能只拿外推截距给设计排名或当作实验阈值。本文示例中的 “selected/best” 表示所保留带边模集合中的数值选择，不是已证实真实最低阈值横模。
+`05_cold_cavity_arrays.npz/08_cold_cavity_arrays.npz` 保存复场和网格序列；`05_numerical_quality.json/08_numerical_quality.json` 给实际损耗、经验敏感性与状态。默认交错法不再用拟合截距替换实际本征值。`family_selection` 比较间隔与合并敏感度，遇到 `grid_sensitive` 或间隔不足时不确认排序。CSV、远场 JSON、图谱和诊断图共享同一角窗与复场，角窗及采样写入元数据。“selected/best” 不代表已证实真实最低阈值横模。
 
 ## 5. 两条论文路线与历史入口
 
 新的论文入口使用孔的 Fourier 系数、纵向 TE0 和 3-D CWT 来构造 C，不把文献阈值或图像作为耦合矩阵输入。它仍保留论文有源限制因子/参考电流等可追踪选项，应区分“采用论文值”和“由当前层结构求出值”。
 
-旧 `scripts/archive/legacy_20261008/reproduce_inoue2019.py`、`run_full.py` 等校准路线和旧 Liang 逐步脚本保留，用于历史对照；校准路线拟合得像论文不是几何模型独立验证。旧脚本仍可从完整路径直接运行，但可能沿用旧的固定结果目录；需要保留历史结果时优先采用三个新主入口的自动时间戳目录。
+旧 `scripts/archive/legacy_20261008/reproduce_inoue2019.py`、`run_full.py` 等校准路线和旧 Liang 逐步脚本保留，用于历史对照；校准路线拟合得像论文不是几何模型独立验证。日常采用三个新主入口。归档脚本沿用历史参数与算法，新输出应进入独立 `results/current/legacy/`，不能因可运行就视为当前已验证设计。
 
 新主程序不是新增优化器：默认候选来自已记录的局部扫描，而不是每次启动都遍历参数空间。真实加工优化还需要刻蚀深度/侧壁、系统偏差与随机无序、热漂移，以及完整横模竞争。不能依据单一中心亮度、单一最低阈值就宣布“最好”。FWHM、1/e² 宽度、RMS 发散角和角窗内包围能量也不能混为同一指标。
 
-## 6. 本轮入口验证记录（2026-10-08）
+## 6. 历史入口验证记录（2026-10-08）
 
-以下是工作流连接/输出检查，不是新一轮全局优化。
+以下是修正前的历史工作流检查，保留便于追溯；**不描述当前默认交错离散的结果**。2026-10-21 三个冷腔与独立连续基准见[本轮修正与验证](corrections_20261021_zh.md)及[结果导航](../results/README.md)。
 
 | 路线 | 实际完成内容 | 目录 |
 |---|---|---|
-| 论文四波 | D=10、dz=3 nm、N=13/17/21/25 完整冷腔、晶格/能带/四模图；未再跑全长时域 | `results/pcsel/paper_reference/20261008_163214_269631` |
-| 正方双圆 | 默认完整冷腔及晶格/能带/四模图；时域和尺寸扫描按默认开关关闭 | `results/pcsel/square_double_hole/20261008_163214_266631` |
-| 三角三孔 | D=10、dz=3 nm、半径网格 11/15/19，默认全部冷腔/小信号步骤，包含器件全貌与远场 zoom | `results/pcsel/triangular_three_hole/20261008_164203_411501` |
-| 论文入口新显示/时域烟测 | `--quick`，0.1 ns、1.4Ith、时域 N=15、冷腔 N=9/11/13，包含全貌/zoom/功率及谱数组 | `results/pcsel/paper_reference/20261008_164151_865877` |
-| 正方入口新显示烟测 | `--quick`，加工检查、晶格/k空间、器件全貌；没有冷腔/时域 | `results/pcsel/square_double_hole/20261008_164212_281348` |
+| 论文四波 | D=10、dz=3 nm、N=13/17/21/25 完整冷腔、晶格/能带/四模图；未再跑全长时域 | `results/archive/legacy_before_20261021/pcsel/paper_reference/20261008_163214_269631` |
+| 正方双圆 | 默认完整冷腔及晶格/能带/四模图；时域和尺寸扫描按默认开关关闭 | `results/archive/legacy_before_20261021/pcsel/square_double_hole/20261008_163214_266631` |
+| 三角三孔 | D=10、dz=3 nm、半径网格 11/15/19，默认全部冷腔/小信号步骤，包含器件全貌与远场 zoom | `results/archive/legacy_before_20261021/pcsel/triangular_three_hole/20261008_164203_411501` |
+| 论文入口新显示/时域烟测 | `--quick`，0.1 ns、1.4Ith、时域 N=15、冷腔 N=9/11/13，包含全貌/zoom/功率及谱数组 | `results/archive/legacy_before_20261021/pcsel/paper_reference/20261008_164151_865877` |
+| 正方入口新显示烟测 | `--quick`，加工检查、晶格/k空间、器件全貌；没有冷腔/时域 | `results/archive/legacy_before_20261021/pcsel/square_double_hole/20261008_164212_281348` |
 
-三角新入口外推最低为 B1，α=0.415664 cm⁻¹、均匀注入参考阈值 0.470545 A；但最细网格最低为 B2（α=4.185218 cm⁻¹），B1 为 4.304994 cm⁻¹。B1 外推敏感性 0.831695 cm⁻¹ 远大于 B1–B2 的 0.051492 cm⁻¹ 间隔，故这组数据**不能确认真实最低阈值族、低阈值优势或单模性**。B1 的中心/峰值=1、窗口内全 RMS=0.308043°、±0.5°圆内包围能量=0.987841 只描述这个候选场，不是确定激射态。平面加工检查 gap=79.345 nm、最小孔宽=71.210 nm；3 nm 边偏/位置预算后为 67.345/65.210 nm，满足本入口假设的 60/65 nm 规则，但不代表真实代工认证。
+上述历史三角入口外推最低为 B1，α=0.415664 cm⁻¹、均匀注入参考阈值 0.470545 A；但最细网格最低为 B2（α=4.185218 cm⁻¹），B1 为 4.304994 cm⁻¹。B1 外推敏感性 0.831695 cm⁻¹ 远大于 B1–B2 的 0.051492 cm⁻¹ 间隔，故这组历史数据**不能确认真实最低阈值族、低阈值优势或单模性**。B1 的中心/峰值=1、窗口内全 RMS=0.308043°、±0.5°圆内包围能量=0.987841 只描述这个历史候选场，不是确定激射态。平面加工检查 gap=79.345 nm、最小孔宽=71.210 nm；3 nm 边偏/位置预算后为 67.345/65.210 nm，满足假设的 60/65 nm 规则，但不代表真实代工认证。
 
 短时域烟测的旧摘要列曾沿用固定 `steady_window_ns=1.0` 标签，但实际只计算了 0.1 ns，因此不应解读为 1 ns 稳态。入口现已改为实际采样尾窗口 `actual_tail_window_ns`；本次保存数组无需改变，额外解释见该结果目录的 `08_summary_interpretation.json`。计算末端平均值也不自动意味着已达到稳态。
 
 早期 `20261008_162815_781445`（四波 quick 网格不足）、`20261008_163308_332612`（四波 quick 最小 N 不足）、`20261008_163214_281099`（六波新 helper 缺面积函数）是**整理流程时的失败目录**，保留但不能作为完成结果；相应入口连接已修正，未改物理方程。
 
-全长 Inoue 四电流 10 ns 的本轮物理审计结果另见 `results/custom_semiconductor_audit_20261008` 和 `audit_semiconductor_literature_20261008_zh.md`；新入口短测试不替代该结果。判断单/多模需要局部非相干光谱与多模投影进一步诊断，不能把当前一个投影测量当作全场证明。
+全长 Inoue 四电流 10 ns 的本轮物理审计结果另见 `results/archive/legacy_before_20261021/custom_semiconductor_audit_20261008` 和 `audit_semiconductor_literature_20261008_zh.md`；新入口短测试不替代该结果。判断单/多模需要局部非相干光谱与多模投影进一步诊断，不能把当前一个投影测量当作全场证明。

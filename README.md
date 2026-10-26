@@ -2,7 +2,25 @@
 
 本平台用 Python 研究光子晶体面发射激光器（PCSEL）：输入晶胞孔形、材料层结构和器件尺寸，计算耦合、有限器件模式、阈值与矢量远场。半导体包含正方四波和三角六波模型；Yb:YAG 使用独立的导波、底部 DBR 和空间增益模型。
 
+2026-10-25 已在[全仓物理审计](docs/physics_audit_overall_20261025_zh.md)后完成[同尺寸四腔严格重跑与优化](docs/strict_rerun_four_cavities_20261025_zh.md)。最新正式入口是[新四腔清单](results/current/strict_rerun_20261025/comparison/selected_cases.json)，逐项绑定实际几何、自己的实频复场、最近竞争模、Jones远场和偏振。四个主腔均为300×300μm正方形物理边界，旧文献复现及旧优化数据保持只读；新数值来自新几何和重新验收，不回填旧快照。审查后的38个物理核心文件在本轮保持相同SHA，另有79项相关回归通过。
+
+新主几何的[Yb:YAG输入输出、脉冲能量及尺寸报告](docs/strict_yag_feasibility_20261025_zh.md)与[此前旧几何研究](docs/yag_feasibility_20261025_zh.md)分开。扫描先筛选，再以完整粗谱、有限细网格挑战、跨频段根、实际频率和原K/M残差核查；失败和未覆盖范围如实保留，不把有界搜索称为全谱证明。当前模型仍有近Bragg、标量TE、材料常谱、固定冷场及空间平均等明确近似，不称完全逐式复现或实验认证。
+
+The 2026-10-25 study separates external, first-entry internal and absorbed pump power, and finite-pulse energy from CW thresholds. The physics audit distinguishes corrected implementation bugs, declared model approximations, historical exploratory paths and missing independent validation.
+
 这是一套研究工具，不是实验认证的设计软件。“论文复现”表示采用论文理论开展对照，不表示所有图片和实验参数已经完全复现。本页是操作教程，不放运行性能排名；结果和设计评价见专题文档与结果目录。
+
+2026-10-21 已修正薄量子阱界面积分、论文层栈、时域入射边界和三角远场口径。有限冷腔采用交错广义本征离散，保留旧迎风算法作对照。最新方法、实跑结果和适用边界见[本轮修正与验证](docs/corrections_20261021_zh.md)。
+
+本轮已重算三套半导体冷腔、四组 10 ns 时域，以及固定周期的 Yb:YAG 16 分支频率和共有反转 CW，修正阶段 203 项测试通过。2026-10-21 按要求清理了扫描大矩阵、修正前归档及开发中间态，保留文献复现、当前三腔最终原始复场与必要验证；原结果由约 7.84 GiB 降至约 350 MiB，释放约 7.50 GiB。保留目录、删除 SHA256 清单和校验范围见[结果导航](results/README.md)。
+
+后续三类腔联合优化新增了完整横模搜索、尺寸与工艺扰动、亮中心近圆斑筛选，以及 Yb:YAG 材料与实际泵浦几何敏感性。推荐参数、逐轮证据和复现命令见[优化总报告](docs/optimization_three_cavities_20261021_zh.md)，晶格的物理区别见[三条路线与三角晶格研究价值](docs/cavity_comparison_research_20261021_zh.md)。优化脚本集中在 `scripts/optimization/`，新候选不直接改写日常主入口的默认参数。本轮优化回归测试为 221 项全部通过；这验证实现与数学基准，不等于实验或独立全波认证。
+
+2026-10-22 的此前同尺寸冻结轮采用论文有限腔的 **300 × 300 μm 正方形物理边界**，优化半导体和 Yb:YAG 的正方、三角晶格主孔加副孔结构。该轮历史参数与适用范围见[此前四腔报告](docs/optimization_matched300_comparison_20261021_zh.md)；[此前总图](results/current/matched300_20261021/comparison/four_cavity_overview.png)、[此前指标](results/current/matched300_20261021/comparison/four_cavity_metrics.csv)和[运行指南](docs/matched300_run_guide_20261021_zh.md)用于追溯。该轮源代码完整回归为 [311 项通过](results/current/matched300_20261021/regression/full_suite_02_summary.json)，不能与后续测试数直接相加。此前165、200、400μm结果不参与最新四腔同尺寸比较；日常入口默认值不自动替换。
+
+2026-10-22 进一步整理了代码说明：日常入口、优化阶段和结果诊断各自有明确职责，关键物理与数值步骤增加中英文注释。研究扫描从[优化脚本导航](scripts/optimization/README.md)进入，正式结果读回从[诊断导航](scripts/diagnostics/README.md)进入。此次注释整理不修改数值公式、求解顺序或默认参数；历史运行来源和最终复场继续保留，当前源与原源的可执行结构对照另存于 `results/current/code_documentation_20261022/`。
+
+The bilingual comments explain physical units, amplitude versus intensity loss, actual-frequency closure, finite-mode identity and complex near/far fields. Use the optimization map to start a new search and the diagnostic map to check existing results. Historical runtime hashes stay attached to their original runs.
 
 第一次使用依次读第 1–5 节；跑通后再读参数、理论与可信度部分。
 
@@ -18,13 +36,17 @@ PCSELSim/
 │  ├─ run_square_double_hole.py    平滑双圆孔，正方四波
 │  ├─ run_triangular_three_hole.py 圆角三角主孔＋两个副孔，三角六波
 │  ├─ run_ybyag_pcsel.py           Yb:YAG、表面 PC、导波层与底部 DBR
+│  ├─ optimization/               分阶段研究扫描、闭频、精度与结果整理
+│  ├─ diagnostics/                独立诊断、正式结果读回和来源核验
 │  ├─ _*.py                       公共流程/路径助手，不必手动运行
 │  └─ archive/                    历史主程序与诊断，保留用于追溯
 ├─ src/pcselsim/                   物理模型与数值算法，不是点击运行的入口
-├─ configs/                       旧 YAML 配置路线
+├─ configs/                       日常配置与独立优化参数 JSON
 ├─ docs/                          理论推导、操作说明与审计
 ├─ tests/                         自动测试
-└─ results/                       每次运行的参数、数组、表格和图片
+└─ results/
+   ├─ current/                    文献复现、当前最终结果及必要验证
+   └─ _cleanup_20261021/           已删除扫描的路径、大小和 SHA256 清单
 ```
 
 | 目的 | 点击运行 | 默认范围 |
@@ -32,7 +54,7 @@ PCSELSim/
 | 学习 Inoue 理论、对照论文 | [run_paper_reproduction.py](scripts/run_paper_reproduction.py) | 理想化双椭圆；还开尺寸扫描与载流子时域，较慢 |
 | 自定义正方晶格半导体 | [run_square_double_hole.py](scripts/run_square_double_hole.py) | 双圆孔冷腔与远场；默认不开尺寸扫描/时域 |
 | 自定义三角晶格半导体 | [run_triangular_three_hole.py](scripts/run_triangular_three_hole.py) | 六波冷腔、远场、阈值与小信号扫描 |
-| 全固态 PCSEL 候选研究 | [run_ybyag_pcsel.py](scripts/run_ybyag_pcsel.py) | 导波/底镜、四波有限器件、单分支 CW 空间增益与设计诊断 |
+| 全固态 PCSEL 候选研究 | [run_ybyag_pcsel.py](scripts/run_ybyag_pcsel.py) | 导波/底镜、固定周期频率闭合、多分支共享反转 CW 与设计诊断 |
 
 前三个是日常半导体入口；第四个是独立晶体扩展。历史脚本没有删除，但新手不用从归档入口开始。
 
@@ -90,7 +112,7 @@ $pcselPython = 'E:/Anaconda/envs/env00/python.exe'
 & $pcselPython scripts/run_triangular_three_hole.py --dry-run
 ```
 
-前者列开关，后者列参数、开关与预计保存位置，均不计算。**YAG 目前没有这两个选项**，用 `--help` 和顶部参数区查看设置。
+前者列开关，后者列参数、开关与预计保存位置，均不计算。YAG 支持 `--dry-run`，并可用 `--help` 查看频率、多 TE 族、泵浦与谱表选项。
 
 ### 4.2 粗网格检查冷腔流程
 
@@ -132,9 +154,16 @@ $pcselPython = 'E:/Anaconda/envs/env00/python.exe'
 & $pcselPython scripts/run_ybyag_pcsel.py --only 01_structure 02_bands 03_finite_modes 04_fields 05_spatial_gain
 ```
 
-第二行是流程检查，第三行是默认精度的单分支 CW 可行性计算。`06_design_scan` 是额外的厚度/盖层/间隔层诊断，按需选择。
+第二行是流程检查，第三行是默认精度的频率闭合、多分支共享反转 CW 计算，默认检查 `ACTIVE_TE_FAMILIES` 中的纵向族。当前 `06_design_scan` 保存已纳入族与未覆盖范围的说明；厚度或周期研究须用不同参数和新目录分别运行，不会自动生成完整厚度/盖层/间隔层扫描。
 
-YAG quick 主要降低截断和有限网格，**不会自动缩减空间泵浦计算，也不会自动关闭设计扫描**。此入口不是半导体速率方程换常数，也不是超快脉冲仿真。
+YAG `--quick` 使用 D2、N9、单 TE0 和较少横向泵网格，只做流程检查。每个真正频率求解都保持器件周期和层厚固定，重新计算纵向场、耦合和有限模。此入口不是超快脉冲仿真。
+
+```powershell
+& $pcselPython scripts/run_ybyag_pcsel.py --dry-run
+& $pcselPython scripts/run_ybyag_pcsel.py --te-families 0 1 2 3 --grid-points 17 --pump-power-W 32
+```
+
+单独 `--only 01_structure` 不解有限模和 CW；`02_bands` 是明确标注的参考局域能带。`03_finite_modes`/`04_fields` 需要频率闭合，`05_spatial_gain` 才计算共有反转。用 `--spectroscopy 实测谱表.json --temperature-K 293.15` 提供有界截面表；超出校准波长或温度范围会拒绝计算。未提供谱表时使用明确标为未校准的名义常数，不能宣称获得实测材料预测。
 
 ## 5. 开关、命令与保存位置
 
@@ -154,22 +183,22 @@ STEPS = {
 | 选项 | 三个半导体入口 | YAG 入口 |
 | --- | --- | --- |
 | `--only 步骤名…` | 完全替代本次开关；列出的步骤开启，包括原 False 项 | 只筛选原来为 True 的项，不能重新开启 False |
-| `--quick` | 粗网格，四波时域还缩短计算窗 | 主要减截断和有限网格，不自动关泵浦/扫描 |
-| `--dry-run` / `--list-steps` | 支持 | 不支持 |
-| `--output 路径` | 新目录或已有空目录，拒绝非空目录 | 必须是尚不存在的新目录 |
+| `--quick` | 粗网格，四波时域还缩短计算窗 | D2/N9/TE0 及较少横向泵网格的流程检查 |
+| `--dry-run` / `--list-steps` | 均支持 | 支持 dry-run，开关用 help 查看 |
+| `--output 路径` | 新目录或已有空目录，拒绝非空目录及历史 archive | 新目录或已有空目录，拒绝非空目录及历史 archive |
 
 关输出不一定跳过其求解依赖：远场必须先求有限模，四波 `01_parameters` 为记录阈值也会求有限模；实际运行先建立所需光学核心。
 
-默认位置自动带时间戳，不覆盖旧结果：
+默认位置自动带时间戳，不覆盖旧结果。历史归档受保护，新计算不能写入 archive：
 
 ```text
-results/pcsel/paper_reference/<时间戳>/
-results/pcsel/square_double_hole/<时间戳>/
-results/pcsel/triangular_three_hole/<时间戳>/
-results/ybyag_crystal_pcsel/<时间戳>/
+results/current/pcsel/paper_reference/<时间戳>/
+results/current/pcsel/square_double_hole/<时间戳>/
+results/current/pcsel/triangular_three_hole/<时间戳>/
+results/current/ybyag_crystal_pcsel/<时间戳>/
 ```
 
-自定义例子：`--output results/my_square_trial_001`。相对路径按工程根解析。换参数用新目录，不删旧数据来腾出同名输出。
+自定义例子：`--output results/current/my_square_trial_001`。相对路径按工程根解析。换参数用新目录，不删旧数据来腾出同名输出。
 
 ## 6. 修改器件：哪些参数才真正生效？
 
@@ -198,7 +227,7 @@ Python 中 `#` 后是注释，`名称 = 值` 是赋值；逗号不要随意删�
 
 默认双圆两孔沿 x、y 分别错位指定比例；直线孔心距离还要乘 √2。`LAYERS` 中 PC 的 `0.0` 是占位，不是真实零折射率。保持 `PC_LAYER_NAME`、`ACTIVE_LAYER_NAME` 与层名一致，有效量子阱总厚度与载流子参数一致。
 
-当前时域在整个 `TIME_DOMAIN_SIZE_UM` 内应用耦合系数，没有独立 PC 区域掩膜；它与冷腔尺寸不同时，不是严格同尺寸验证。
+当前时域在整个 `TIME_DOMAIN_SIZE_UM` 内应用耦合系数，没有独立 PC 区域掩膜。论文默认及本轮正式时域记录使用 **400 µm 时域窗口、300 µm 冷腔和300 µm电极**；25 µm电流扩展参数不定义独立的PC边界。因此这组时域与300 µm冷腔不是严格同尺寸验证。
 
 ### 6.2 三角六波
 
@@ -223,16 +252,16 @@ Python 中 `#` 后是注释，`名称 = 值` 是赋值；逗号不要随意删�
 
 ### 6.3 Yb:YAG
 
-- `TARGET_WAVELENGTH_NM`：参考波长；入口由所选 TE 族求 `a=λ/n_eff`，不保证实际激射波长恰为参考值。
+- `TARGET_WAVELENGTH_NM`：参考波长；未指定 `--period-nm` 时，入口只按 TE0 参考模设计一次 `a=λ/n_eff`。其余 TE 族及各有限分支保持这个实际周期重新闭合频率，不保证实际激射波长恰为参考值。
 - `GAIN_THICKNESS_NM`、`PC_DEPTH_NM`、`CAP_THICKNESS_NM`、`TOP_SILICA_NM`、`BOTTOM_SPACER_NM`：增益、PC、盖层及包层厚度。
 - 各层折射率、`DBR_PAIRS`、`DBR_HIGH_INDEX`、`DBR_CENTER_NM`、`DBR_FIRST_LAYER`：导波与有限底镜。当前常数不自动包含实测膜 n/k 或温度/浓度依赖。
 - `FILL_FRACTION`、`SMALL_HOLE_AREA_SHARE`、`HOLE_DISPLACEMENT_A`：SiO2 填充双圆孔。
-- `TE_FAMILY`：纵向 TE 族。增厚往往增加纵向模，不能只检查 TE0。
+- `ACTIVE_TE_FAMILIES` / `--te-families`：纳入共享增益竞争的纵向 TE 族，默认 0–3。每族仍只检查保留的四个连接分支，并未搜索所有纵向/横向模。旧 `TE_FAMILY` 只用于参考结构助手。
 - `YB_DENSITY_CM3` 是数密度，不是直接输入百分数；截面单位 cm²，寿命单位 ms。
-- `PUMP_INTENSITY_PER_EDGE_W_CM2` 是**每一端、耦合进 YAG 后**的泵强度，不是双端总功率、外部功率或吸收功率。
+- `INTERNAL_TOTAL_PUMP_POWER_W` / `--pump-power-W` 是耦合进入增益层的总泵功率，默认 32 W。`--pump-architecture` 选择单边、双边或顶部；顶部多程用 `--top-passes`、`--return-efficiency` 指定理想非相干回程。外部入射、内部入口和吸收功率需要区分。旧 per-edge 强度常量只用于冻结参考函数。
 - `INTERNAL_POWER_LOSS_CM` 是额外强度损耗，cm⁻¹；辐射由分层 Green 求解。
 
-上下透明层导波，底 DBR 改变辐射边界，面内反馈仍来自二维 PC，不是改成纵向 Fabry–Pérot 腔。实际泵设置来自显式 `SpatialPumpConfig`；旧 `YbYAGMediumConfig` 中未被入口使用的泵/时间字段不改变当前 CW 解。
+上下透明层导波，底 DBR 改变辐射边界，面内反馈仍来自二维 PC，不是改成纵向 Fabry–Pérot 腔。当前入口由上述命令行选项构造显式 `PumpGeometryConfig`；`SpatialPumpConfig` 仍用于底层单程对照。旧 `YbYAGMediumConfig` 中未被入口使用的泵/时间字段不改变当前 CW 解。
 
 ## 7. 理论、论文公式与算法对应
 
@@ -253,13 +282,13 @@ Python 中 `#` 后是注释，`名称 = 值` 是赋值；逗号不要随意删�
 | 纵向模 | 一维标量 TE 有限差分；方形 λB=a·n_eff，三角 λB=√3·a·n_eff/2 | [vertical.py](src/pcselsim/vertical.py) |
 | 四波耦合 | Liang (3.14)、(3.19)–(3.20)、(3.23)–(3.35)；C1D＋Crad＋C2D | [three_d_cwt.py](src/pcselsim/three_d_cwt.py) |
 | 六波耦合 | Liang 5.2/附录 B；六基本波及 TE 偏振，基本/辐射/高阶项，C6 对称截断 | [triangular_six_wave.py](src/pcselsim/triangular_six_wave.py) |
-| 有限区域 | 四波 (4.21)–(4.22)，六波 (5.17) 特征方向离散；零入射、稀疏本征、多网格外推 | [custom_analysis.py](src/pcselsim/custom_analysis.py)、[triangular_finite.py](src/pcselsim/triangular_finite.py) |
+| 有限区域 | 四波 (4.21)–(4.22)，六波 (5.17) 特征方向离散；零入射、交错广义本征、最细实际本征对及多网格敏感度 | [custom_analysis.py](src/pcselsim/custom_analysis.py)、[triangular_finite.py](src/pcselsim/triangular_finite.py) |
 | 矢量远场 | Liang (4.24)–(4.26)；复 Ex/Ey 分别 Fourier 后相加强度，不强加涡旋/Gaussian | 图谱/远场 |
 | 半导体动态 | Inoue (8)–(11)；分裂步、Lax–Wendroff 场传播、Heun 积分，场/载流子耦合 | [solver.py](src/pcselsim/solver.py)，08_time_domain |
 | 晶体底镜 | 分层出射 Green、有限 DBR 振幅/相位、上下通量闭合，不是功率简单乘反射率 | [stratified_optics.py](src/pcselsim/stratified_optics.py)、[reflector_cwt.py](src/pcselsim/reflector_cwt.py) |
-| 晶体增益 | 准三能级再吸收、饱和泵传播、x–z 反转、单模光子与功率闭合 | [ybyag_spatial_rates.py](src/pcselsim/ybyag_spatial_rates.py)，05_spatial_gain |
+| 晶体增益 | 准三能级再吸收、饱和泵传播、x–z 共有反转、各模独立光子库与功率闭合 | [ybyag_multimode.py](src/pcselsim/ybyag_multimode.py)，05_spatial_gain |
 
-能带是**近 Γ 沿 M–Γ–X 的局域片段**，不是完整布里渊区；三角 X 为工程名称，实际采用 K 方向。六波有限算法不是论文广义交错质量矩阵逐项照搬，一阶数值耗散需要收敛审查；每个带边族的连接模也不等于完整横模谱。
+能带是**近 Γ 沿 M–Γ–X 的局域片段**，不是完整布里渊区；三角 X 为工程名称，实际采用 K 方向。四波/六波有限算法默认采用同一特征交错广义质量矩阵，消除了旧迎风体数值扩散；孔径阶梯边界、截断和模族选择仍需收敛审查。每个带边族的连接模不等于完整横模谱。显式选择 `legacy_upwind` 才使用旧离散。
 
 三角 `12_small_signal_pump` **不是非线性 L–I 曲线**；YAG CW 解也不表示稳定单模、调 Q 或飞秒锁模。
 
@@ -272,19 +301,21 @@ Python 中 `#` 后是注释，`名称 = 值` 是赋值；逗号不要随意删�
 | PNG：晶格/全貌/纵向模/能带/图谱 | 直观检查；全貌可能抽样显示阵列，冷腔场通常已归一 |
 | run_plan.json / parameters.json / summary.json | 实际参数、开关、来源、假设；不是只看脚本现在的值 |
 | mode_summary.csv / 08_finite_modes.csv | 模式表，先分清单位、raw/extrap 来源和角窗 |
-| 05_numerical_quality.json / 08_numerical_quality.json | 网格敏感性、最细原始/外推损耗及状态 |
+| 05_numerical_quality.json / 08_numerical_quality.json | 当前默认报告最细实际本征损耗、网格敏感性和状态；旧算法另有外推口径 |
 | 05_threshold_current_audit.json / 11_threshold_current_audit.json | 损耗→增益→均匀注入电流，以及参考值来源 |
 | 05_cold_cavity_arrays.npz / 08_cold_cavity_arrays.npz | 复本征场与收敛数组，不是图片 |
-| YAG finite_modes.npz / 05_spatial_gain.npz | 四波复场、空间反转与泵浦数组 |
+| YAG *_optical.npz / shared_inversion.npz / summary.json | 各分支频率、复场、共有反转、光子数及能量预算 |
 | run_status.json | 当前入口完成标记：半导体 completed，YAG complete |
+
+每个新运行还保存 `source_provenance.json`，记录启动时源码哈希和环境。时域 NPZ 新增 `probe_signals`、`probe_coordinates_um`，频谱图同时给出局部探针非相干和与原相干投影；两者都不是全部出射光的实验线宽。
 
 老运行可能没有完成标记；新入口中断也可能留下 PNG。结合终端、数据和元信息判断，不只数图片。
 
 必须记住：
 
 1. **幅度损耗 α≠功率损耗**：通常 `g_modal=2α+α_internal`。m⁻¹ 转 cm⁻¹ 除以 100；α 也不是材料增益阈值。
-2. **raw≠extrap**：四波 `mode_summary.csv` 的 `alpha_per_m` 是外推幅度损耗。YAG 同名表也有外推值，但 CW 门槛使用最细 raw；连同质量 JSON/summary 阅读。
-3. **外推阈值没有“外推场图”**：场通常来自最细网格；外推选中的族可能不是 raw 最低族。`best/selected` 只表示保留候选集内选择。
+2. **实际本征对与拟合分开**：当前默认交错离散的 `alpha_per_m` 与保存的最细网格场属于同一个实际本征对；h/h² 拟合只诊断敏感度，不替代它。仅旧 `legacy_upwind` 和历史数据保留外推损耗口径。
+3. **最低计算家族不等于已确认激射模**：`family_selection` 会比较模式间隔与合并网格敏感度。`best/selected` 只是保留候选集内选择；未解决的排序会明确标记。
 4. **归一冷腔场不是绝对 V/m/瓦特**：功率还需增益、光子数与通道归一化；四波时域 `power_W` 不是自动等于上侧实测收集功率。
 5. **远场能量对保存角窗归一**：0.5° 半径内能量不是全半球效率，不同角窗不可直接比。full RMS 为 `2√〈θx²+θy²〉`，不是 FWHM、1/e² 或 M²。
 6. **Zoom 只改显示**：`FAR_FIELD_ZOOM_DEG` 裁图，不改善光束。四波 `06_A_vector_far_field.png` 固定是 A，不一定是最低阈值模。
@@ -296,25 +327,25 @@ Python 中 `#` 后是注释，`名称 = 值` 是赋值；逗号不要随意删�
 from pathlib import Path
 import numpy as np
 
-folder = Path("D:/things/Master/Doc/PCSELSim/results/你的结果目录")
+folder = Path("D:/things/Master/Doc/PCSELSim/results/current/你的结果目录")
 with np.load(folder / "05_cold_cavity_arrays.npz", allow_pickle=False) as data:
     print(data.files)  # 先查数组名，不凭猜测读取键
 ```
 
-索引：[结果导航](results/README.md)、[文档导航](docs/README.md)。历史最佳排序与新审计冲突时，以后续审计为准。
+索引：[结果导航](results/README.md)、[文档导航](docs/README.md)、[2026-10-21 修正与验证](docs/corrections_20261021_zh.md)。历史结果仅供追溯，不能与新离散、新层栈的数值拼接排名。
 
 ## 9. 正式设计的验收顺序
 
 1. 看晶胞/全貌，查周期邻孔重叠、面积、真实尺寸。重叠会破坏当前面积/Fourier 叠加假设。
 2. 查纵向 TE 族、PC/增益重叠，以及材料参数是否适用。
 3. 增大 `CWT_TRUNCATION_ORDER`（YAG 为 `CWT_TRUNCATION`）、减小 `VERTICAL_STEP_NM`，查耦合收敛。
-4. 增大 `FINITE_EIGEN_GRIDS` / `FINITE_GRIDS`，比较 raw、extrap 和排序；三角网格不是普通图片分辨率。
-5. 若外推敏感度大于模间阈值间隔，不能确定真实首起振模。`provisional` 是暂定，`grid_sensitive` 不允许精细排名。
+4. 增大 `FINITE_EIGEN_GRIDS` / `FINITE_GRIDS`，比较实际本征对、网格敏感性和排序；三角网格不是普通图片分辨率。仅旧算法同时比较外推值。
+5. 若网格敏感度大于模间阈值间隔，不能确定真实首起振模。`mesh_checked` 只是经验网格检查，`provisional` 是旧外推的暂定状态，均不是物理收敛证明；`grid_sensitive` 不允许精细排名。
 6. 同面积、同增益/内损耗、同角窗比较。亮中心不证明单模，低阈值不自动代表高输出/高光束质量。
 7. 查最小孔宽、间隙、圆角、位置误差。`FABRICATION_RULES` 是假设规则，报告失败不会自动阻止运行，也不是代工厂认证。
-8. 独立全波/交错离散或实验验证关键方案。测试通过、通量守恒、图片相似都不是充分物理认证。
+8. 用独立全波、另一种经验证的离散或实验复核关键方案。当前默认已经是交错离散；测试通过、通量守恒、图片相似都不是充分物理认证。
 
-YAG 还须查多 TE 族、共享反转模竞争、`C(ω)` 与增益/温度的频率自洽、实测薄膜吸收和热负荷。冻结 Bragg 单分支结果只能作为候选门槛，不是制备承诺。
+YAG 已补固定周期下的冷腔 `C(ω)` 频率闭合和指定分支的共享反转 CW 竞争。当前各 TE 族的线性冷腔独立计算，尚无相干 TE 间耦合；反转为 x-z 网格、y 向平均，CW 互补求解要求 beta=0。仍须检查更多纵向/横向模、增益牵引与动态稳定性、实测薄膜吸收/色散、材料截面和热负荷。新的频率闭合不是完整矢量 Maxwell 极点或实验认证，旧冻结 Bragg 功率留在历史归档。
 
 ## 10. 常见错误
 
@@ -393,10 +424,11 @@ git pull --ff-only
 - [理论代码映射](docs/theory_zh.md)、[几何驱动](docs/geometry_derived_3dcwt_zh.md)、[六波](docs/triangular_six_wave_zh.md)：理解模型后读实现。
 - [物理/设计审计](docs/research_design_audit_20261008_zh.md)：可信度、逐文件评价与验证优先级。
 - [YAG 材料](docs/ybyag_waveguide_materials_20261008_zh.md)、[空间增益](docs/ybyag_dbr_pump_design_zh.md)、[独立检查](docs/ybyag_independent_checks_20261008_zh.md)。
+- [YAG 厚度与泵浦实验教程](docs/ybyag_thickness_pumping_study_20261008_zh.md)：独立诊断脚本、固定总功率比较、单/双边与顶部多程泵；不改变日常四个主入口。
 - [超快路线](docs/ybyag_ultrafast_routes_zh.md)：CW、调 Q、锁模、独立 Kerr 微腔是不同问题，当前入口不输出经验证的飞秒脉冲。
 - [文档总索引](docs/README.md)、[结果导航](results/README.md)、[Git 指南](docs/git_workflow_zh.md)。
 
-安装后的 `pcselsim reproduce --config ...` 是**旧 YAML 标定耦合路线**，不等于这里的几何驱动入口；其参数、相对路径与固定输出习惯不同，可能复用旧目录。它与 archive 保留作追溯，日常设计使用第 1 节入口。
+安装后的 `pcselsim reproduce --config ...` 是**旧 YAML 标定耦合路线**，不等于这里的几何驱动入口；默认写入 `results/current/legacy/inoue2019/<时间戳>`，拒绝非空目录与历史归档。归档脚本的新输出位于 `results/current/legacy/`，其历史参数和教学近似没有因此升级为器件预测。日常设计使用第 1 节入口。
 
 推荐习惯：**保存参数 → 看结构 → 做冷腔 → 查收敛与损耗来源 → 看远场 → 做增益/动态 → 保存版本与数据 → 再比较设计。**
 

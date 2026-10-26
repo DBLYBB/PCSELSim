@@ -1,8 +1,8 @@
 import numpy as np
 
 from pcselsim.geometry import Ellipse, SquareLatticeCell
-from pcselsim.three_d_cwt import ThreeDCWTSettings, build_geometry_coupling
-from pcselsim.vertical import Layer, LayerStack
+from pcselsim.three_d_cwt import ThreeDCWTSettings, _pc_layer_coordinates, build_geometry_coupling
+from pcselsim.vertical import Layer, LayerStack, VerticalMode
 
 
 def _model(radius: float):
@@ -51,3 +51,14 @@ def test_unit_cell_reconstruction_contains_high_orders() -> None:
     assert intensity.shape == phase.shape == (41, 41)
     assert np.isclose(float(intensity.max()), 1.0)
     assert np.all(np.isfinite(intensity))
+
+
+def test_pc_quadrature_includes_interfaces_and_excludes_separate_layer_gaps():
+    stack = LayerStack((Layer("PC", 2.0, 2.0), Layer("spacer", 5.0, 2.0),
+                        Layer("PC", 2.0, 2.0)), 1.0, 1.0, padding_um=.001)
+    z_nm = np.asarray((0., 3., 6., 9., 11.))
+    mode = VerticalMode((z_nm-5.5)*1e-3, np.ones(5), np.ones(5), 2.0, {})
+    z, field, weights = _pc_layer_coordinates(stack, mode, "PC")
+    assert np.isclose(z[0], 1e-9, rtol=1e-13, atol=0.0)
+    assert np.isclose(z[-1], 10e-9, rtol=1e-13, atol=0.0)
+    assert np.isclose(np.sum(weights*abs(field)**2), 4e-9, rtol=1e-13, atol=0.0)

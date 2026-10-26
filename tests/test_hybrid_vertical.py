@@ -24,3 +24,14 @@ def test_explicit_multimode_family():
     )
     second = HybridLayerStack(stack.layers, 1.45, 1.45, 2, 1).solve_te0(1030, 10)
     assert np.isclose(second.effective_index, modes[1].effective_index)
+
+
+def test_non_aligned_layer_partition_preserves_each_family_overlap():
+    whole=HybridLayerStack((Layer('core',1200.,1.82),),1.45,1.45,2.)
+    split=HybridLayerStack((Layer('left',301.3,1.82),Layer('thin',3.1,1.82),
+                           Layer('right',895.6,1.82)),1.45,1.45,2.)
+    for original,partitioned in zip(solve_guided_te_modes(whole,1030,7.3,2),
+                                    solve_guided_te_modes(split,1030,7.3,2)):
+        assert np.isclose(original.effective_index,partitioned.effective_index,atol=1e-12)
+        assert np.isclose(sum(partitioned.confinement.values()),original.confinement['core'],atol=1e-12)
+        assert partitioned.confinement['thin']>0

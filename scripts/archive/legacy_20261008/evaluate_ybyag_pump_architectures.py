@@ -30,7 +30,7 @@ from pcselsim.solid_state import (
 )
 
 
-OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "ybyag_pump_architectures_20261008"
+OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "current" / "legacy" / "ybyag_pump_architectures_20261008"
 DOPING_MULTIPLIERS = (1.0, 5.0, 10.0)  # relative to default ~1 at.% Yb
 THICKNESSES_UM = (4.0, 15.0, 100.0)
 SQUARE_SIDES_UM = (500.0, 5000.0)

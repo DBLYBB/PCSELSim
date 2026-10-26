@@ -1,6 +1,12 @@
 """Triangular three-hole entry / 三角晶格三孔主程序。
 Rounded triangle main hole + two circle satellites; research-process candidate.
 不存在“已证明全局最优/单模”结论；六波时域未实现，小信号泵扫描不是 L-I 曲线。
+
+The editable preset is separate from the frozen matched300 finalists. A square
+physical aperture can use the triangular characteristic grid without changing
+the aperture into a hexagon.
+当前可修改预设与 matched300 定稿分开；三角特征网格只是离散坐标，方形物理
+边界仍是方形。孔的布拉菲晶格、单胞孔形和有限腔外边界需要分别理解。
 """
 from __future__ import annotations
 
@@ -48,6 +54,7 @@ LAYERS = (
     LayerSpec("active InGaAs QWs", 10.0, 3.584, "#f0027f"),
     LayerSpec("active AlGaAs barrier 2", 20.0, 3.445, "#ccebc5"),
     LayerSpec("active InGaAs QWs", 10.0, 3.584, "#f0027f"),
+    LayerSpec("active AlGaAs barrier 3", 20.0, 3.445, "#ccebc5"),
     LayerSpec("AlGaAs", 80.0, 3.445, "#ccebc5"),
     LayerSpec("n-clad AlGaAs", 1000.0, 3.122, "#bebada"),
 )
@@ -72,6 +79,7 @@ DN_DN_CM3 = -5.0e-21
 DEVICE_SHAPE = "square"        # square/circle/hexagon
 DEVICE_HALF_SIZE_UM = 150.0
 FINITE_GRIDS = (11, 15, 19)
+FINITE_DISCRETIZATION = "staggered"  # Liang generalized midpoint scheme; legacy_upwind for comparisons
 CWT_TRUNCATION_ORDER = 10
 VERTICAL_STEP_NM = 3.0
 BAND_Q_MAX_2PI_OVER_A = 0.01    # LOCAL near-Gamma segment toward M and X(K)
@@ -107,6 +115,13 @@ FABRICATION_RULES = (
 )
 
 def build_parameters() -> TriangularSettings:
+    """Collect six-wave model inputs without solving / 汇总六波参数，不在此求解。
+
+    DEVICE_HALF_SIZE_UM is a square half-width or an aperture circumradius,
+    interpreted together with DEVICE_SHAPE; it is not always the full width.
+    DEVICE_HALF_SIZE_UM 需结合 DEVICE_SHAPE 解释为方形半宽或外接圆半径，
+    不能直接当作所有腔的完整横向尺寸。
+    """
     return TriangularSettings(
         FABRICATION_RULES=FABRICATION_RULES,
         ACTIVE_INDEX=ACTIVE_INDEX,
@@ -126,6 +141,7 @@ def build_parameters() -> TriangularSettings:
         FAR_FIELD_VIEW_DEG=FAR_FIELD_VIEW_DEG,
         FAR_FIELD_ZOOM_DEG=FAR_FIELD_ZOOM_DEG,
         FINITE_GRIDS=FINITE_GRIDS,
+        FINITE_DISCRETIZATION=FINITE_DISCRETIZATION,
         HOLE_EPSILON=HOLE_EPSILON,
         INTERNAL_LOSS_CM=INTERNAL_LOSS_CM,
         LATTICE_CONSTANT_NM=LATTICE_CONSTANT_NM,
@@ -145,6 +161,7 @@ def build_parameters() -> TriangularSettings:
 
 
 def main(argv=None) -> None:
+    """Execute enabled static/diagnostic steps / 执行已启用的静态计算及诊断步骤。"""
     execute_run(build_parameters(), STEPS, "triangular_three_hole", run_triangular, argv)
 
 

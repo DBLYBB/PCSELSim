@@ -19,7 +19,7 @@ else:
 
 PROJECT_ROOT = bootstrap_project()
 DEFAULT_LIBRARY = Path("C:/Users/19254/Zotero/storage")
-OUTPUT_FILE = PROJECT_ROOT / "results" / "audit_20261008" / "literature_library_index.json"
+OUTPUT_FILE = PROJECT_ROOT / "results" / "current" / "legacy" / "audit_20261008" / "literature_library_index.json"
 
 
 def main():

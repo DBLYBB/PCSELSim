@@ -7,7 +7,7 @@ finite-area companion problem used for thresholds, envelopes and far fields.
 中文说明：本模块解决 Liang 式 (4.21) 的有限区域冷腔本征问题，并据式
 (4.23)--(4.26) 生成模式包络与远场。它与 Inoue 时域程序共享同一个四波基底和
 同一个耦合矩阵，但数值任务不同：这里求线性本征模，``solver.py`` 求载流子—光场
-非线性瞬态。所有模式阈值都应经过网格外推；近简并模的 A/B 标签需结合重叠与场形
+非线性瞬态。默认交错广义本征问题报告最细网格真实本征对，另报网格敏感度；近简并模的 A/B 标签需结合重叠与场形
 共同判断，不能只看排序编号。
 """
 
@@ -24,10 +24,12 @@ import numpy as np
 from matplotlib.colors import PowerNorm
 from matplotlib.patches import Circle, Ellipse as EllipsePatch, Polygon, Rectangle
 from scipy import sparse
-from scipy.sparse.linalg import ArpackNoConvergence, eigs
+from scipy.sparse.linalg import LinearOperator
 
 from .coupling import band_edge_basis, validate_passive_coupling
 from .numerical_quality import extrapolate_grid_loss
+from .finite_discretization import (build_finite_eigenproblem, relative_residual,
+                                    staggered_grid_diagnostics)
 
 
 MODE_NAMES = ("A", "B", "C", "D")
@@ -99,6 +101,10 @@ class FourWaveOpticalSpec:
     modal_detuning_cm: tuple[float, float, float, float]
     modal_radiation_loss_cm: tuple[float, float, float, float]
     grid_points: int = 17
+    discretization: str = "staggered"
+    eigensolutions_per_target: int = 10
+    dense_eigenproblem_limit: int | None = None
+    eigen_maxiter: int = 8000
 
 
 @dataclass(frozen=True)
@@ -113,6 +119,8 @@ class LinearMode:
     grid_alpha_per_m: float | None = None
     extrapolation_uncertainty_per_m: float | None = None
     extrapolation_status: str = "single_grid"
+    discretization: str = "legacy_upwind"
+    eigen_residual: float | None = None
 
     @property
     def intensity(self) -> np.ndarray:
@@ -135,6 +143,8 @@ class VectorFarFieldMetrics:
     alias_free_axis_view_deg: float = 1.5
     energy_normalization: str = "evaluated_angular_window"
     moment_reference: str = "surface_normal_radial_second_moment"
+    requested_view_deg: float = 1.5
+    samples: int = 0
 
 
 def ensure_square_four_wave(lattice: LatticeSpec) -> None:
@@ -177,15 +187,12 @@ def _upwind_1d(n: int, spacing_m: float, positive_direction: bool) -> sparse.csr
     )
 
 
-def finite_area_operator(spec: FourWaveOpticalSpec, coupling: np.ndarray) -> sparse.csr_matrix:
-    """Discretize Liang Eq. (4.21), ``(delta+i*alpha)Phi=C Phi+i D Phi``.
+def finite_area_eigenproblem(spec: FourWaveOpticalSpec, coupling: np.ndarray):
+    """Liang staggered center averages and zero incoming link amplitudes.
 
-    One-sided upwind derivatives impose Eq. (4.22) through zero incoming ghost
-    cells.  This is stable and physically open, but only first-order accurate;
-    use :func:`solve_finite_modes_converged` for reported losses.
-
-    单边迎风差分通过“入射 ghost cell 为零”实现式 (4.22) 开放边界。该离散仅一阶
-    精度，正式报告损耗时必须使用多网格外推。
+    The optional legacy_upwind backend retains the historical first-order
+    operator for comparison. See finite_discretization.py for the mass matrix
+    and its exact passive boundary-flux identity.
     """
     n = spec.grid_points
     if n < 9:
@@ -198,12 +205,13 @@ def finite_area_operator(spec: FourWaveOpticalSpec, coupling: np.ndarray) -> spa
     dx_minus = sparse.kron(identity_n, d_minus, format="csr")
     dy_plus = sparse.kron(d_plus, identity_n, format="csr")
     dy_minus = sparse.kron(d_minus, identity_n, format="csr")
-    points = n*n
-    local = sparse.kron(
-        sparse.csr_matrix(coupling), sparse.identity(points, format="csr"), format="csr"
-    )
-    transport = sparse.block_diag((dx_plus, dx_minus, dy_plus, dy_minus), format="csr")
-    return local + 1j*transport
+    return build_finite_eigenproblem(coupling, (dx_plus, dx_minus, dy_plus, dy_minus),
+                                     spacing_m, spec.discretization)
+
+
+def finite_area_operator(spec: FourWaveOpticalSpec, coupling: np.ndarray) -> LinearOperator:
+    """Equivalent operator acting on fields at the common coefficient points."""
+    return finite_area_eigenproblem(spec, coupling).center_operator()
 
 
 def _roughness(fields: np.ndarray) -> float:
@@ -229,10 +237,7 @@ def _rotate_four_wave_fields(fields: np.ndarray) -> np.ndarray:
 
 
 def _relative_eigen_residual(operator, fields: np.ndarray, value: complex) -> float:
-    vector = fields.ravel()
-    applied = operator @ vector
-    denominator = max(np.linalg.norm(applied), abs(value) * np.linalg.norm(vector), 1e-30)
-    return float(np.linalg.norm(applied - value * vector) / denominator)
+    return relative_residual(operator, fields, value)
 
 
 def analytic_mode_fields(n: int, mode_name: str, order: int = 0) -> np.ndarray:
@@ -268,7 +273,8 @@ def solve_finite_modes(
     粗糙度和被动性共同选择分支。因此必须同时查看 ``band_overlap`` 与模式图。
     """
     coupling = coupling_from_modal_values(spec) if coupling is None else coupling
-    operator = finite_area_operator(spec, coupling)
+    problem = finite_area_eigenproblem(spec, coupling)
+    operator = problem.center_operator()
     if band_basis is None:
         values, vectors = np.linalg.eig(coupling)
         ordering = np.argsort(values.real)
@@ -288,36 +294,16 @@ def solve_finite_modes(
     )
     results: dict[str, LinearMode] = {}
     for mode_index, (name, target) in enumerate(zip(MODE_NAMES, targets, strict=True)):
-        try:
-            values, vectors = eigs(
-                operator,
-                k=10,
-                sigma=complex(target),
-                which="LM",
-                tol=1e-7,
-                maxiter=8_000,
-                v0=v0,
-            )
-        except ArpackNoConvergence as error:
-            # Shift-invert occasionally returns 8--9 perfectly usable modes and
-            # then fails to converge the last requested vector.  Mode selection
-            # below only needs a small local cluster, so retain a sufficiently
-            # large partial cluster instead of discarding the complete geometry
-            # sweep.  Fewer than four vectors is too small to distinguish the
-            # four travelling-wave branches reliably and remains a hard error.
-            #
-            # ARPACK 偶尔只差最后一个向量未收敛；已收敛的局域谱仍满足后续的
-            # 带边重叠筛选。少于四个向量时则不接管，避免隐藏真正的数值失败。
-            if error.eigenvalues is None or len(error.eigenvalues) < 4:
-                raise
-            values = error.eigenvalues
-            vectors = error.eigenvectors
+        requested = max(4, min(int(spec.eigensolutions_per_target), operator.shape[0]-2))
+        values, vectors = problem.near(complex(target), requested, v0, maxiter=spec.eigen_maxiter,
+                                      dense_limit=spec.dense_eigenproblem_limit)
         candidates: list[tuple[float, int, float]] = []
         degenerate = np.flatnonzero(np.abs(targets-target) < 1e-7*max(abs(target), 1.0))
+        degenerate_basis, _ = np.linalg.qr(basis[:, degenerate])
         for index, value in enumerate(values):
             fields = vectors[:, index].reshape(4, n, n)
             projections = np.einsum(
-                "ak,axy->kxy", basis[:, degenerate].conj(), fields
+                "ak,axy->kxy", degenerate_basis.conj(), fields
             )
             overlap = float(
                 np.sum(np.abs(projections)**2)/np.sum(np.abs(fields)**2)
@@ -348,6 +334,8 @@ def solve_finite_modes(
             band_overlap=overlap,
             radiation_x=radiation_x,
             radiation_y=radiation_y,
+            discretization=spec.discretization,
+            eigen_residual=relative_residual(operator, fields, value),
         )
     # Degeneracy alone does not imply C4 symmetry.  Accept a rotated partner
     # only if it independently satisfies the finite-device eigenproblem.
@@ -382,14 +370,11 @@ def solve_finite_modes_converged(
     band_basis: np.ndarray,
     radiation_builder=None,
 ) -> tuple[dict[str, LinearMode], dict[str, np.ndarray]]:
-    """First-order grid convergence and zero-spacing extrapolation.
+    """Mesh study with actual finest-grid eigenpairs for the staggered backend.
 
-    The incoming-boundary finite-volume derivative is first-order accurate.
-    Fitting each complex eigenvalue against 1/N removes its leading numerical
-    outflow error.  The eigenfield/radiation map is retained from the finest
-    grid, while reported delta and alpha use the intercept.
-
-    也就是说：表格中的频率/损耗使用 ``1/N -> 0`` 截距，图片中的场形来自最细网格。
+    The function name is retained for compatibility; mesh_checked is an
+    empirical sensitivity check, not a proof of convergence. Only explicitly
+    selected legacy_upwind runs retain historical 1/N extrapolation.
     """
     if len(grid_points) < 3 or any(
         left >= right for left, right in zip(grid_points, grid_points[1:])
@@ -410,6 +395,17 @@ def solve_finite_modes_converged(
         values = np.asarray([
             item[name].delta_per_m+1j*item[name].alpha_per_m for item in solutions
         ])
+        if spec.discretization == "staggered":
+            raw_alpha, uncertainty, status = staggered_grid_diagnostics(inverse_grid, values.imag)
+            answer[name] = replace(
+                solutions[-1][name], grid_alpha_per_m=solutions[-1][name].alpha_per_m,
+                extrapolation_uncertainty_per_m=uncertainty, extrapolation_status=status,
+            )
+            convergence[name] = values
+            convergence[f"{name}_alpha_diagnostics"] = np.asarray(
+                [raw_alpha, uncertainty, solutions[-1][name].alpha_per_m]
+            )
+            continue
         delta_limit = float(np.polyfit(inverse_grid, values.real, 1)[1])
         alpha_limit, raw_alpha, uncertainty, status = extrapolate_grid_loss(
             inverse_grid, values.imag
@@ -454,7 +450,7 @@ def plot_grid_convergence(
     for ax in axes:
         ax.grid(alpha=0.2)
         ax.legend(ncol=2)
-    fig.suptitle("Finite-area grid convergence; intercept is the reported value")
+    fig.suptitle("Finite-area mesh study; staggered reports the actual finest eigenpair")
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(path, dpi=190)
     plt.close(fig)
@@ -595,6 +591,7 @@ def vector_far_field_metrics(
     mode: LinearMode,
     view_deg: float = 1.5,
     padding: int = 8,
+    far_field: tuple | None = None,
 ) -> VectorFarFieldMetrics:
     """Return beam metrics normalized to the evaluated angular window.
 
@@ -603,7 +600,7 @@ def vector_far_field_metrics(
     """
     if mode.radiation_x is None or mode.radiation_y is None:
         raise ValueError("a geometry-derived radiation field is required")
-    angle, field_x, field_y = vector_far_field_complex(
+    angle, field_x, field_y = far_field if far_field is not None else vector_far_field_complex(
         mode.radiation_x,
         mode.radiation_y,
         spec.wavelength_nm,
@@ -654,6 +651,8 @@ def vector_far_field_metrics(
         alias_free_axis_view_deg=float(np.rad2deg(np.arctan(
             spec.wavelength_nm * 1e-9 / (2.0 * spec.domain_um * 1e-6 / spec.grid_points)
         ))),
+        requested_view_deg=float(view_deg),
+        samples=len(angle),
     )
 
 
@@ -668,6 +667,11 @@ def radiation_proxy_field(mode: LinearMode) -> np.ndarray:
     aperture/divergence studies, but its detailed lobes are not a substitute
     for RCWA/FEM/FDTD far-field reconstruction.
     """
+    warnings.warn(
+        "Illustrative radiation proxy with an imposed aperture factor; this is "
+        "not a geometry-derived physical far field and must not certify a design.",
+        RuntimeWarning, stacklevel=2,
+    )
     n = mode.fields.shape[-1]
     axis = np.linspace(-1.0, 1.0, n)
     x, y = np.meshgrid(axis, axis)
@@ -844,7 +848,8 @@ def plot_vertical_mode(vertical_mode, pc_layer_name: str, path: Path) -> None:
 
 def plot_mode_atlas(lattice: LatticeSpec, spec: FourWaveOpticalSpec,
                     modes: dict[str, LinearMode], path: Path,
-                    unit_cell_builder=None) -> None:
+                    unit_cell_builder=None, view_deg: float = 1.0, padding: int = 16,
+                    far_fields: dict | None = None) -> None:
     fig, axes = plt.subplots(4, 3, figsize=(10.5, 13.0))
     for row, name in enumerate(MODE_NAMES):
         mode = modes[name]
@@ -862,37 +867,41 @@ def plot_mode_atlas(lattice: LatticeSpec, spec: FourWaveOpticalSpec,
         _draw_hole(axes[row, 1], lattice, (0.0, 0.0))
         axes[row, 1].set(title=f"{name}: one-cell intensity", xlabel="x/a", ylabel="y/a")
         if mode.radiation_x is not None and mode.radiation_y is not None:
-            angle, ffp, _, _, divergence = vector_far_field(
+            angle, fx, fy = (far_fields[name] if far_fields is not None else vector_far_field_complex(
                 mode.radiation_x, mode.radiation_y,
-                spec.wavelength_nm, spec.domain_um, view_deg=1.2,
-            )
+                spec.wavelength_nm, spec.domain_um, view_deg=view_deg, padding=padding))
+            ffp = np.abs(fx)**2 + np.abs(fy)**2
+            ffp /= max(float(ffp.max()), np.finfo(float).eps)
+            xx, yy = np.meshgrid(angle, angle)
+            divergence = 2*np.sqrt(float(np.sum((xx**2+yy**2)*ffp)/max(ffp.sum(), np.finfo(float).eps)))
             far_field_label = "3-D CWT FFP"
         else:
             coherent = radiation_proxy_field(mode)
             angle, ffp, divergence = far_field(
-                coherent, spec.wavelength_nm, spec.domain_um, view_deg=1.2
+                coherent, spec.wavelength_nm, spec.domain_um, view_deg=view_deg, padding=padding
             )
             far_field_label = "FFP proxy"
         axes[row, 2].imshow(ffp, origin="lower", cmap="hot",
                             norm=PowerNorm(gamma=0.65, vmin=0, vmax=1),
                             extent=(angle[0], angle[-1], angle[0], angle[-1]))
-        axes[row, 2].set(title=f"{name}: {far_field_label}, window RMS diameter={divergence:.2f} deg",
+        axes[row, 2].set(title=f"{name}: {far_field_label}\nwindow RMS = {divergence:.3f} deg",
                          xlabel="theta_x (deg)", ylabel="theta_y (deg)")
-    fig.suptitle("A/B/C/D finite-area modes: envelope, unit cell and far field")
+    fig.suptitle(f"Four computed families; FFP +/-{np.max(abs(angle)):.4g} deg, {len(angle)} samples; window RMS diameter")
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     fig.savefig(path, dpi=190)
     plt.close(fig)
 
 
 def plot_vector_far_field_diagnostics(
-    spec: FourWaveOpticalSpec, mode: LinearMode, path: Path
+    spec: FourWaveOpticalSpec, mode: LinearMode, path: Path,
+    view_deg: float = 1.0, padding: int = 16, far_field: tuple | None = None,
 ) -> None:
     """Plot total/vector FFP, circular-component phase, and polarization axes."""
     if mode.radiation_x is None or mode.radiation_y is None:
         raise ValueError("A geometry-derived radiation field is required")
-    angle, fx, fy = vector_far_field_complex(
+    angle, fx, fy = far_field if far_field is not None else vector_far_field_complex(
         mode.radiation_x, mode.radiation_y,
-        spec.wavelength_nm, spec.domain_um,
+        spec.wavelength_nm, spec.domain_um, view_deg=view_deg, padding=padding,
     )
     ix, iy = np.abs(fx)**2, np.abs(fy)**2
     total = ix+iy
@@ -931,7 +940,8 @@ def plot_vector_far_field_diagnostics(
     center = len(angle)//2
     center_ratio = float(total[center, center])
     fig.suptitle(
-        f"Mode {mode.name} vector far field; center/max={center_ratio:.2e}"
+        f"Family {mode.name}; center/max={center_ratio:.2e}; +/-{np.max(abs(angle)):.4g} deg, {len(angle)} samples\n"
+        "energy normalized to evaluated angular window; polarization axes from Stokes parameters"
     )
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(path, dpi=190)
@@ -982,7 +992,11 @@ def plot_length_sweep_from_solver(
     lengths_um: np.ndarray | None = None,
     grid_points: int | tuple[int, ...] = 13,
 ) -> dict[str, np.ndarray]:
-    """Re-solve Eq. (4.21) at every length, optionally extrapolating N -> infinity."""
+    """Re-solve Eq. (4.21) at each length, optionally checking several meshes.
+
+    Staggered reports the actual finest-grid eigenpair; only legacy_upwind
+    replaces its eigenvalue by the historical zero-spacing intercept.
+    """
     if lengths_um is None:
         lengths_um = np.linspace(40.0, 400.0, 10)
     values = {name: [] for name in MODE_NAMES}
@@ -1004,7 +1018,7 @@ def plot_length_sweep_from_solver(
     fig, ax = plt.subplots(figsize=(7.3, 4.8))
     for name in MODE_NAMES:
         ax.plot(lengths_um, values[name], "o-", label=name)
-    grid_label = f"N={grid_points}" if isinstance(grid_points, int) else f"N={grid_points}, extrapolated"
+    grid_label = f"N={grid_points}" if isinstance(grid_points, int) else f"N={grid_points}, mesh study"
     ax.set(xlabel="device length L (um)", ylabel="normalized threshold alpha L",
            title=f"Eq. (4.21) length sweep, {grid_label}")
     ax.legend()

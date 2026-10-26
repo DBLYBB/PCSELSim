@@ -1,5 +1,7 @@
 # 三角晶格六波 3D-CWT：推导、代码和运行说明
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
@@ -208,7 +210,7 @@ scripts/archive/legacy_20261008/run_custom_triangular_six_wave_pcsel.py
 python scripts\archive\legacy_20261008\run_custom_triangular_six_wave_pcsel.py
 ```
 
-默认结果写入 `results/custom_semiconductor_triangular_six_wave`，不会覆盖方形晶格结果。步骤开关为：
+默认结果写入 `results/archive/legacy_before_20261021/custom_semiconductor_triangular_six_wave`，不会覆盖方形晶格结果。步骤开关为：
 
 | 开关 | 输出 | 含义 |
 |---|---|---|

@@ -1,5 +1,7 @@
 # 自定义 PCSEL 主程序使用指南
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
@@ -31,16 +33,16 @@
 1. 用 PyCharm 打开整个 `PCSELSim` 文件夹。
 2. 在左侧项目树展开 `scripts`。
 3. 第一次先右键 `run_custom_semiconductor_pcsel.py`，选择 **Run**。
-4. 输出默认进入 `results/custom_semiconductor_inoue2019`。
+4. 输出默认进入 `results/archive/legacy_before_20261021/custom_semiconductor_inoue2019`。
 5. Yb:YAG几何迁移请运行 `run_geometry_derived_ybyag_pcsel.py`，并先读可达性JSON。
 
 若要运行三晶格，直接右键 `run_custom_wang2024_triple_lattice.py`。它写入
-`results/custom_semiconductor_wang2024_triple_lattice`，不会覆盖 Inoue 输出。它默认关闭第 08 步；
+`results/archive/legacy_before_20261021/custom_semiconductor_wang2024_triple_lattice`，不会覆盖 Inoue 输出。它默认关闭第 08 步；
 原因不是程序不能运行，而是论文主文未给出完整的 InAlGaAs 载流子模型，直接套用 950 nm InGaAs
 参数会产生看似精确但物理上不可审计的功率与瞬态。
 
 若要运行三角 Bravais 晶格，右键 `run_custom_triangular_six_wave_pcsel.py`。它写入
-`results/custom_semiconductor_triangular_six_wave`，并使用真正的六波基底；注意这里的“三角晶格”
+`results/archive/legacy_before_20261021/custom_semiconductor_triangular_six_wave`，并使用真正的六波基底；注意这里的“三角晶格”
 与 Wang 论文在方形 Bravais 晶胞中放三个孔的“三晶格 motif”不是同一个概念。
 
 脚本开头的 `_project_bootstrap.py` 会自动把 `src` 加入 Python 搜索路径，所以直接点脚本时不会再出现
@@ -109,7 +111,7 @@ python scripts\archive\legacy_20261008\run_custom_triangular_six_wave_pcsel.py -
 
 若要运行本轮三孔设计，右键 `design_triangular_three_hole_pcsel.py`。它固定“中心主孔 +
 `+a1` 副孔 + `+a2` 副孔”的拓扑，批量扫描 15 组参数，然后对胜者执行完整六波和三网格复算。
-输出写入 `results/custom_semiconductor_triangular_three_hole_optimized`。它没有逐步骤开关，因为单独
+输出写入 `results/archive/legacy_before_20261021/custom_semiconductor_triangular_three_hole_optimized`。它没有逐步骤开关，因为单独
 跳过候选会使综合排名失去可比性；要自定义扫描可直接修改脚本顶部的 `CANDIDATES`。详见
 [三孔晶格远场优化](triangular_three_hole_optimization_zh.md)。
 

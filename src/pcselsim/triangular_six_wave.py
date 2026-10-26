@@ -15,7 +15,7 @@ square-lattice four-wave implementation; no 4x4 matrix is padded or fitted.
 晶格和纵向 TE0 模计算。它不是把现有四波矩阵扩展成 6x6 的经验近似。
 
 Scope / 适用范围：本模块覆盖无限周期结构的 Gamma 带边态、M-Gamma-X
-局域能带、辐射常数和晶胞场。有限圆形器件、整体包络和远场由配套的
+局域能带、辐射常数和晶胞场。有限孔径器件、整体包络和远场由配套的
 ``triangular_finite.py`` 实现；六波半导体载流子时域方程尚未实现。
 """
 
@@ -30,7 +30,7 @@ import numpy as np
 from matplotlib.patches import Circle, Ellipse as EllipsePatch, Polygon
 from scipy.special import j1
 
-from .geometry import polygon_fourier_integral
+from .geometry import polygon_fourier_integral, _validate_lossless_epsilon
 from .band_structure import (
     BandDiagram,
     detuning_to_normalized_frequency,
@@ -41,6 +41,7 @@ from .three_d_cwt import (
     _double_green_integral,
     _pc_layer_coordinates,
     _project_radiation_passive,
+    _roundoff_hermitian,
     _surface_green_integral,
     _trapezoid_weights,
 )
@@ -97,6 +98,13 @@ class TriangularEllipse:
     angle_deg: float = 0.0
     epsilon: float = 1.0
 
+    def __post_init__(self) -> None:
+        _validate_lossless_epsilon(self.epsilon, "triangular inclusion epsilon")
+        if (np.shape(self.center_fractional) != (2,) or np.shape(self.radii_over_a) != (2,)
+                or not np.isfinite(self.center_fractional).all() or not np.isfinite(self.radii_over_a).all()
+                or min(self.radii_over_a) <= 0.0 or not np.isfinite(self.angle_deg)):
+            raise ValueError("Triangular ellipse requires finite 2-D center/angle and positive finite radii")
+
     @property
     def fill_fraction(self) -> float:
         primitive_area_over_a2 = np.sqrt(3.0) / 2.0
@@ -119,6 +127,13 @@ class TriangularPolygon:
     def __post_init__(self) -> None:
         if len(self.vertices_fractional) < 3:
             raise ValueError("a polygon inclusion needs at least three vertices")
+        _validate_lossless_epsilon(self.epsilon, "triangular inclusion epsilon")
+        points = np.asarray(self.vertices_fractional, dtype=float)
+        if points.shape != (len(self.vertices_fractional), 2) or not np.isfinite(points).all():
+            raise ValueError("Triangular polygon vertices must be finite 2-D coordinates")
+        area = np.sum(points[:, 0]*np.roll(points[:, 1], -1)-np.roll(points[:, 0], -1)*points[:, 1])
+        if area == 0.0:
+            raise ValueError("Triangular polygon inclusion must have nonzero signed area")
 
     @property
     def fill_fraction(self) -> float:
@@ -238,6 +253,9 @@ class TriangularLatticeCell:
     background_epsilon: float
     inclusions: tuple[TriangularEllipse | TriangularPolygon, ...]
 
+    def __post_init__(self) -> None:
+        _validate_lossless_epsilon(self.background_epsilon, "triangular background epsilon")
+
     @property
     def fill_fraction(self) -> float:
         return float(sum(item.fill_fraction for item in self.inclusions))
@@ -281,6 +299,9 @@ class TriangularCWTSettings:
     High orders are retained in the C6-symmetric reciprocal shell
     ``m^2-m*n+n^2 <= truncation_order^2``.  A rectangular index cutoff would
     spuriously split the B1/B2 and D1/D2 doublets of a circular unit cell.
+
+    中文：按三角倒格矢度量取完整六重旋转壳层；这里保留求和域的对称性，
+    并不强制非对称主孔/副孔晶胞本身具有 C6 对称性。
     """
 
     truncation_order: int = 10
@@ -314,7 +335,7 @@ class TriangularCouplingResult:
     radiation_surface_factor: complex
 
     def radiation_amplitudes(self, coefficients: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Return the two normal-radiation polarizations from Liang Eq. (B1)."""
+        """Return normal-radiation Ex/Ey / 按 Liang 式 (B1) 重建复振幅，非强度。"""
         coefficients = np.asarray(coefficients, dtype=np.complex128)
         if coefficients.shape[0] != 6:
             raise ValueError("The leading coefficient dimension must contain six waves")
@@ -400,17 +421,35 @@ def build_triangular_coupling(
     lattice_constant_nm: float,
     wavelength_guess_nm: float,
     settings: TriangularCWTSettings = TriangularCWTSettings(),
+    *,
+    fixed_wavelength_nm: float | None = None,
 ) -> TriangularCouplingResult:
-    """Build Liang Appendix-B ``C=Cb+Cr+Ch`` from geometry and the TE0 mode."""
+    """Build Liang Appendix-B ``C=Cb+Cr+Ch`` from geometry and the TE0 mode.
+
+    The default solves the unperturbed Bragg vertical mode. A specified fixed
+    wavelength rebuilds TE0, all couplings and radiation at that wavelength,
+    allowing a finite pole to close its own frequency at a fixed period.
+    ``bragg_wavelength_nm`` then stores the actual evaluation wavelength for
+    API compatibility; it need not satisfy the unperturbed Bragg condition.
+
+    中文：传入固定波长时，此字段保存实际求值波长；名称中的 Bragg 不表示
+    已满足有限腔闭频条件。有限腔仍需另求失谐量与本征值实部的一致性。
+    """
     if settings.truncation_order < 2:
         raise ValueError("truncation_order must be >= 2")
     average_epsilon = float(np.real(cell.fourier_epsilon(0, 0)))
     if average_epsilon <= 0.0:
         raise ValueError("The triangular-cell average epsilon must be positive")
 
-    wavelength_nm, vertical_mode = solve_triangular_bragg_vertical_mode(
-        stack, lattice_constant_nm, wavelength_guess_nm, settings
-    )
+    if fixed_wavelength_nm is None:
+        wavelength_nm, vertical_mode = solve_triangular_bragg_vertical_mode(
+            stack, lattice_constant_nm, wavelength_guess_nm, settings
+        )
+    else:
+        wavelength_nm = float(fixed_wavelength_nm)
+        if not np.isfinite(wavelength_nm) or wavelength_nm <= 0.0:
+            raise ValueError("fixed_wavelength_nm must be finite and positive")
+        vertical_mode = stack.solve_te0(wavelength_nm, dz_nm=settings.vertical_step_nm)
     z_m, theta, weights_m = _pc_layer_coordinates(stack, vertical_mode, pc_layer_name)
     pc_confinement = float(np.sum(np.abs(theta) ** 2 * weights_m))
     inverse_epsilon_integral = pc_confinement / average_epsilon
@@ -446,7 +485,7 @@ def build_triangular_coupling(
             cb[row, column] = (
                 prefactor_basic * xi(p - r, q - s) * polarization_overlap
             )
-    cb = 0.5 * (cb + cb.conj().T)
+    cb = _roundoff_hermitian(cb, label="Cb")
 
     beta_radiative = complex(k0 * pc_index)
     radiation_integral = _double_green_integral(
@@ -500,6 +539,10 @@ def build_triangular_coupling(
     # The metric circle reaches |m| or |n| = 2D/sqrt(3), not merely D.
     # Covering that full bounding box is required to preserve all C6 rotations.
     index_limit = int(np.ceil(2.0 * order_limit / np.sqrt(3.0)))
+    # Equal triangular reciprocal metrics share the same planar-host Green
+    # response. Coefficients, TE projectors and summation order remain separate.
+    # 相同倒格矢长度可共享平面宿主核，但各方向 Fourier 系数与 TE 投影仍分别求和。
+    radial_green: dict[int, tuple[complex, complex]] = {}
     for m in range(-index_limit, index_limit + 1):
         for n in range(-index_limit, index_limit + 1):
             metric_squared = reciprocal_metric_squared(m, n)
@@ -513,14 +556,17 @@ def build_triangular_coupling(
                 raise ValueError(
                     f"High-order triangular wave ({m},{n}) is not evanescent"
                 )
-            green_integral = _double_green_integral(
-                z_m, theta, weights_m, beta_high, radiative=False
-            )
-            probe_kernel = (
-                1.0 / (2.0 * beta_high)
-                * np.exp(-beta_high * np.abs(z_probe - z_m))
-            )
-            probe_green = complex(np.sum(probe_kernel * theta * weights_m))
+            if metric_squared not in radial_green:
+                green_integral = _double_green_integral(
+                    z_m, theta, weights_m, beta_high, radiative=False
+                )
+                probe_kernel = (
+                    1.0 / (2.0 * beta_high)
+                    * np.exp(-beta_high * np.abs(z_probe - z_m))
+                )
+                probe_green = complex(np.sum(probe_kernel * theta * weights_m))
+                radial_green[metric_squared] = green_integral, probe_green
+            green_integral, probe_green = radial_green[metric_squared]
 
             zeta_x = np.empty(6, dtype=np.complex128)
             zeta_y = np.empty(6, dtype=np.complex128)
@@ -553,7 +599,7 @@ def build_triangular_coupling(
                     * xi(p - m, q - n)
                     * (polar[row, 0] * zeta_x + polar[row, 1] * zeta_y)
                 )
-    ch = 0.5 * (ch + ch.conj().T)
+    ch = _roundoff_hermitian(ch, label="Ch")
 
     coupling = cb + cr + ch
     _validate_six_wave_passivity(
@@ -624,6 +670,8 @@ def triangular_band_diagram(
         result.lattice_constant_nm,
         result.bragg_wavelength_nm,
         result.effective_index,
+        group_index=result.group_index,
+        reference_wavenumber_per_m=beta0,
     )
     return BandDiagram(
         wave_number_2pi_over_a=q,
@@ -635,7 +683,7 @@ def triangular_band_diagram(
         approximation=(
             "triangular six-wave 3-D CWT; M-Gamma-X display path; "
             "Cb+Cr+Ch frozen at Gamma; "
-            "Liang Eq. B12 wavevector mismatch"
+            "Liang Eq. B12 wavevector mismatch; physical frequency origin and local group-index conversion"
         ),
     )
 

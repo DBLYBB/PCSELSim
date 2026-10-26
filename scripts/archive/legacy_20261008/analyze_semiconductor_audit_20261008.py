@@ -33,7 +33,7 @@ from pcselsim.observables import wavelength_spectrum
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--directory", type=Path,
-                        default=PROJECT_ROOT / "results" / "custom_semiconductor_audit_20261008")
+                        default=PROJECT_ROOT / "results" / "archive" / "legacy_before_20261021" / "custom_semiconductor_audit_20261008")
     args = parser.parse_args()
     directory = args.directory.resolve()
     threshold = json.loads((directory / "05_threshold_current_audit.json").read_text(encoding="utf-8"))

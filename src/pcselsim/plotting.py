@@ -12,7 +12,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .observables import wavelength_spectrum
+from .observables import incoherent_wavelength_spectrum, wavelength_spectrum
 from .solver import SimulationResult
 
 
@@ -25,7 +25,7 @@ def plot_transient(result: SimulationResult, path: str | Path) -> Path:
     axes[1].plot(result.time_ns, result.power_W, color="#d62728")
     axes[1].set_ylabel("Radiated power (W)")
     axes[1].set_xlabel("Time (ns)")
-    axes[0].set_title(f"I = {result.current_ratio:.2f} Ith")
+    axes[0].set_title(f"I = {result.current_ratio:.2f} I_ref")
     fig.savefig(path, dpi=180)
     plt.close(fig)
     return path
@@ -61,25 +61,44 @@ def plot_spectra(
 ) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig, axes = plt.subplots(len(results), 1, sharex=True, figsize=(6.4, 1.8 * len(results) + 1.2))
-    axes = np.atleast_1d(axes)
-    for axis, result in zip(axes, results):
+    fig, axes = plt.subplots(
+        len(results), 2, squeeze=False,
+        figsize=(11.0, 2.1 * len(results) + 1.2),
+    )
+    for row, result in enumerate(results):
         count = max(16, int(round(window_ns * 1e-9 / result.dt_s)))
         signal = result.complex_signal[-count:]
-        wavelength, power = wavelength_spectrum(signal, result.dt_s, center_wavelength_nm)
+        wavelength, coherent_power = wavelength_spectrum(signal, result.dt_s, center_wavelength_nm)
+        probe_power = None
+        if result.probe_signals is not None and result.probe_signals.shape[0] >= 2:
+            probe_wavelength, probe_power = incoherent_wavelength_spectrum(
+                result.probe_signals[-count:], result.dt_s, center_wavelength_nm
+            )
+            if not np.array_equal(probe_wavelength, wavelength):
+                raise ValueError("probe and coherent signal sampling must match")
         half_span = 0.5*span_nm
         mask = (
             (wavelength >= center_wavelength_nm-half_span)
             & (wavelength <= center_wavelength_nm+half_span)
         )
-        visible_power = power[mask].copy()
-        if visible_power.size and float(visible_power.max()) > 0.0:
-            visible_power /= float(visible_power.max())
-        axis.plot(wavelength[mask], visible_power, color="#222222", lw=1.0)
-        axis.text(0.02, 0.78, f"{result.current_ratio:.2f} Ith", transform=axis.transAxes)
-        axis.set_ylabel("Norm.")
-    axes[-1].set_xlabel("Wavelength (nm)")
-    fig.tight_layout()
+        for column, axis in enumerate(axes[row]):
+            visible = mask if column == 0 else np.ones(wavelength.shape, dtype=bool)
+            if probe_power is not None:
+                axis.plot(wavelength[visible], probe_power[visible], color="#222222", lw=1.0,
+                          label="Sampled local probe sum")
+            axis.plot(wavelength[visible], coherent_power[visible], color="#d95f02", lw=0.9,
+                      ls="--", label="Coherent modal projection")
+            axis.text(0.02, 0.78, f"{result.current_ratio:.2f} I_ref", transform=axis.transAxes)
+            axis.set_ylabel("Norm. FFT power")
+            if column == 0:
+                axis.set_xlim(center_wavelength_nm-half_span, center_wavelength_nm+half_span)
+            if row == len(results)-1:
+                axis.set_xlabel("Wavelength (nm)")
+    axes[0, 0].set_title("Reference-frequency view")
+    axes[0, 1].set_title("Full represented frequency range")
+    axes[0, 1].legend(fontsize=8)
+    fig.suptitle("Sampled-channel spectra; not total emitted spectra (each curve normalized)", fontsize=10)
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
     fig.savefig(path, dpi=180)
     plt.close(fig)
     return path

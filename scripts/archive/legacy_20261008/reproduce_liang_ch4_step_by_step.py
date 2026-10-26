@@ -122,7 +122,7 @@ FAR_FIELD_ZERO_PADDING = 8
 FAR_FIELD_GAMMA = 0.60
 
 # All generated files are placed here; no existing result is read or changed.
-OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "liang_chapter4_step_by_step"
+OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "current" / "legacy" / "liang_chapter4_step_by_step"
 
 
 PAPER_PDF = Path(

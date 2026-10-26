@@ -85,7 +85,7 @@ STEPS = {
     "08_time_domain": False,  # enable only after supplying a validated InAlGaAs carrier model
 }
 
-OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "custom_semiconductor_wang2024_triple_lattice"
+OUTPUT_DIRECTORY = PROJECT_ROOT / "results" / "current" / "legacy" / "custom_semiconductor_wang2024_triple_lattice"
 
 
 def configure_base_workflow() -> None:

@@ -57,7 +57,7 @@ from pcselsim.vertical import Layer, LayerStack
 DEVICE_PRESET = "inoue2019_idealized_double_lattice"
 RUN_TITLE = "CUSTOM SEMICONDUCTOR PCSEL - Inoue idealized double lattice"
 GEOMETRY_FIDELITY = (
-    "Inoue Table I/II plus idealized Fig. 2(a) twin ellipses; "
+    "Legacy Inoue approximation (third 20 nm barrier omitted) plus idealized Fig. 2(a) twin ellipses; "
     "the unpublished SEM contour is not reconstructed"
 )
 WAVELENGTH_GUESS_NM = 950.65  # Bragg wavelength is solved from lambda=a*n_eff(lambda).
@@ -84,7 +84,10 @@ UNIT_CELL_INCLUSIONS = (
     ),
 )
 
-# Inoue Table I stack, listed from bottom to top.  The PC index written here
+# Legacy approximation to Inoue Table I: the third 20 nm AlGaAs barrier was
+# omitted in this historical parameter set. Kept for historical comparisons;
+# current main scripts contain all three barriers. Listed from bottom to top.
+# The PC index written here
 # is replaced automatically by sqrt(<epsilon>) from the selected unit cell.
 LAYERS = (
     LayerSpec("p-clad AlGaAs", 2000.0, 3.297, "#7fc97f"),
@@ -170,7 +173,7 @@ STEPS = {
     "08_time_domain": True,   # Inoue Eqs. 8-11; slowest / 最慢的非线性时域步骤
 }
 
-OUTPUT_DIRECTORY = PROJECT_ROOT/"results"/"custom_semiconductor_inoue2019"
+OUTPUT_DIRECTORY = PROJECT_ROOT/"results"/"current"/"legacy"/"custom_semiconductor_inoue2019"
 
 
 def build_unit_cell(lattice: LatticeSpec) -> SquareLatticeCell:

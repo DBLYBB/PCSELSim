@@ -45,6 +45,7 @@ from pcselsim.triangular_six_wave import (
 from pcselsim.vertical import Layer, LayerStack
 from pcselsim.fabrication import TRIANGULAR_DIRECT
 from pcselsim.fabrication import FabricationRules, evaluate_fabrication
+from pcselsim.finite_discretization import assess_mode_selection
 from scripts._presentation import plot_device_overview as plot_overview, plot_far_field_zoom
 
 
@@ -84,6 +85,7 @@ class TriangularSettings:
     WAVELENGTH_GUESS_NM: object
     ZERO_CARRIER_GAIN_CM: object
     FABRICATION_RULES: tuple[FabricationRules, ...]
+    FINITE_DISCRETIZATION: str = "staggered"
 
 
 @dataclass(frozen=True)
@@ -275,6 +277,12 @@ def write_parameter_report(p, output: Path, candidate, cell, layers, model) -> N
             "cwt_truncation_order": p.CWT_TRUNCATION_ORDER,
             "vertical_step_nm": p.VERTICAL_STEP_NM,
             "band_q_max_2pi_over_a": p.BAND_Q_MAX_2PI_OVER_A,
+            "finite_discretization": p.FINITE_DISCRETIZATION,
+            "reported_finite_eigenpair": "actual finest-grid eigenvalue and coefficient-point field",
+            "far_field_requested_half_window_deg": p.FAR_FIELD_VIEW_DEG,
+            "far_field_samples": p.FAR_FIELD_SAMPLES,
+            "far_field_energy_normalization": "evaluated_angular_window",
+            "far_field_moment_definition": "2 sqrt(<theta_x^2+theta_y^2>) relative to surface normal; window-limited",
         },
         "basic_orders": TRIANGULAR_BASIC_ORDERS,
         "coupling_matrix_units": "m^-1; each complex entry is [real, imaginary]",
@@ -293,13 +301,13 @@ def write_parameter_report(p, output: Path, candidate, cell, layers, model) -> N
     )
 
 
-def analyze_lasing_mode(p, modes, model) -> tuple[object, object, float, dict]:
+def analyze_lasing_mode(p, modes, model, far_fields=None) -> tuple[object, object, float, dict]:
     lasing_mode = min(modes.values(), key=lambda item: item.alpha_per_m)
     competitors = [
         item.alpha_per_m for item in modes.values() if item.name != lasing_mode.name
     ]
     gap_cm = (min(competitors) - lasing_mode.alpha_per_m) / 100.0
-    far = triangular_vector_far_field(
+    far = far_fields[lasing_mode.name] if far_fields is not None else triangular_vector_far_field(
         lasing_mode,
         model.bragg_wavelength_nm,
         view_deg=p.FAR_FIELD_VIEW_DEG,
@@ -315,10 +323,14 @@ def analyze_lasing_mode(p, modes, model) -> tuple[object, object, float, dict]:
 
 
 def write_threshold_audit(p, 
-    output: Path, lasing_mode, far, gap_cm: float, audit: dict, model
+    output: Path, lasing_mode, far, gap_cm: float, audit: dict, model, selection=None
 ) -> dict:
     summary = {
-        "lasing_mode": lasing_mode.name,
+        "selected_computed_family": lasing_mode.name,
+        "family_selection": selection or {
+            "ordering_resolved_on_tested_grids": False,
+            "selection_interpretation": "Conditional audit of one computed family, not a lasing prediction",
+        },
         "alpha_mode_cm-1": lasing_mode.alpha_per_m / 100.0,
         "internal_loss_cm-1": p.INTERNAL_LOSS_CM,
         "gain_condition": "g_modal = alpha_internal + 2 alpha_mode",
@@ -335,17 +347,19 @@ def write_threshold_audit(p,
             "centroid_offset_deg": far.centroid_offset_deg,
             "ellipticity": far.ellipticity,
             "selected_family_extrapolation_status": lasing_mode.extrapolation_status,
-            "selection_interpretation": "Lowest extrapolated loss among six retained families, not proven lasing mode",
+            "selection_interpretation": "Lowest computed family among six retained states; see family_selection; not a proven lasing mode",
             "far_field_requested_view_deg": far.requested_view_deg,
             "far_field_evaluated_view_deg": far.evaluated_view_deg,
             "energy_normalization": far.energy_normalization,
+            "angular_samples": getattr(far, "samples", p.FAR_FIELD_SAMPLES),
+            "moment_reference": getattr(far, "moment_reference", "surface_normal_radial_second_moment"),
             "encircled_power_0p5deg": far.encircled_power_0p5deg,
             "encircled_power_1deg": far.encircled_power_1deg,
             "full_rms_divergence_deg": far.full_rms_divergence_deg,
         },
         "interpretation": (
-            "Uniform-injection small-signal threshold audit; not a nonlinear "
-            "six-wave time-domain L-I prediction."
+            "Conditional uniform-injection small-signal threshold for this computed family; "
+            "finite-family ordering may be numerically unresolved. Not a nonlinear L-I prediction."
         ),
     }
     (output / "11_threshold_current_audit.json").write_text(
@@ -383,7 +397,11 @@ def small_signal_pump_sweep(p, output: Path, audit: dict, lasing_mode, model) ->
         dn_eff = overlap * p.DN_DN_CM3 * (
             density_cm3 - audit["threshold_density_cm-3"]
         )
-        wavelength_shift_nm = model.bragg_wavelength_nm * dn_eff / model.effective_index
+        # At fixed resonant propagation constant beta, d beta/d omega=ng/c.
+        # Therefore Delta lambda/lambda=Delta neff/ng to first order; using
+        # neff instead would silently discard the model's guided dispersion.
+        # 中文：固定共振波数时一阶波长漂移的分母为群折射率 ng，不是相折射率。
+        wavelength_shift_nm = model.bragg_wavelength_nm * dn_eff / model.group_index
         rows.append({
             "current_ratio_to_small_signal_threshold": float(ratio),
             "current_A": float(current),
@@ -450,6 +468,8 @@ def run_triangular(p: TriangularSettings, switches: dict[str, bool], output: Pat
     modes = None
     convergence = None
     analysis = None
+    far_fields = None
+    selection = None
 
     def need_band():
         nonlocal band
@@ -460,9 +480,9 @@ def run_triangular(p: TriangularSettings, switches: dict[str, bool], output: Pat
         return band
 
     def need_modes():
-        nonlocal modes, convergence, analysis
+        nonlocal modes, convergence, analysis, far_fields, selection
         if modes is None:
-            print("solving six-wave finite device with multi-grid extrapolation ...", flush=True)
+            print(f"solving six-wave finite device: {p.FINITE_DISCRETIZATION}, actual finest eigenpair ...", flush=True)
             modes, convergence = solve_triangular_finite_modes_converged(
                 model,
                 TriangularFiniteSpec(
@@ -470,6 +490,7 @@ def run_triangular(p: TriangularSettings, switches: dict[str, bool], output: Pat
                     radius_cells=p.FINITE_GRIDS[-1],
                     internal_loss_cm=0.0,
                     aperture_shape=p.DEVICE_SHAPE,
+                    discretization=p.FINITE_DISCRETIZATION,
                 ),
                 p.FINITE_GRIDS,
             )
@@ -478,14 +499,29 @@ def run_triangular(p: TriangularSettings, switches: dict[str, bool], output: Pat
                 "reported_amplitude_loss_cm-1": mode.alpha_per_m/100.0,
                 "finest_grid_amplitude_loss_cm-1": mode.grid_alpha_per_m/100.0,
                 "empirical_sensitivity_cm-1": mode.extrapolation_uncertainty_per_m/100.0,
+                "discretization": mode.discretization,
+                "relative_eigen_residual": mode.eigen_residual,
             } for name, mode in modes.items()}
             (output/"08_numerical_quality.json").write_text(json.dumps(quality, indent=2), encoding="utf-8")
+            selection = assess_mode_selection(modes)
+            far_fields = {name: triangular_vector_far_field(mode, model.bragg_wavelength_nm,
+                p.FAR_FIELD_VIEW_DEG, p.FAR_FIELD_SAMPLES) for name, mode in modes.items()}
+            (output/"08_family_selection.json").write_text(json.dumps(selection, indent=2), encoding="utf-8")
             np.savez_compressed(output/"08_cold_cavity_arrays.npz", C_m=model.coupling_m,
+                x_um=next(iter(modes.values())).grid.x_um,
+                y_um=next(iter(modes.values())).grid.y_um,
+                **{f"eigenvalue_{name}": mode.delta_per_m + 1j*mode.alpha_per_m for name, mode in modes.items()},
                 **{f"fields_{name}": mode.fields for name, mode in modes.items()},
                 **{f"radiation_x_{name}": mode.radiation_x for name, mode in modes.items()},
                 **{f"radiation_y_{name}": mode.radiation_y for name, mode in modes.items()},
                 **{f"convergence_{name}": convergence[name] for name in modes})
-            analysis = analyze_lasing_mode(p, modes, model)
+            np.savez_compressed(output/"08_far_field_arrays.npz",
+                **{f"angle_deg_{name}": far.angle_deg for name, far in far_fields.items()},
+                **{f"power_{name}": far.power for name, far in far_fields.items()},
+                **{f"field_x_{name}": far.field_x for name, far in far_fields.items()},
+                **{f"field_y_{name}": far.field_y for name, far in far_fields.items()})
+            analysis = analyze_lasing_mode(p, modes, model, far_fields)
+            print(selection["selection_interpretation"], flush=True)
         return modes
 
     if switches["01_parameters"]:
@@ -528,7 +564,8 @@ def run_triangular(p: TriangularSettings, switches: dict[str, bool], output: Pat
         print("[08] finite-device thresholds, table and convergence")
         current = need_modes()
         write_triangular_finite_table(
-            current, model, output / "08_finite_modes.csv"
+            current, model, output / "08_finite_modes.csv", p.FAR_FIELD_VIEW_DEG,
+            p.FAR_FIELD_SAMPLES, far_fields
         )
         plot_triangular_thresholds(current, output / "08_finite_thresholds.png")
         plot_triangular_grid_convergence(
@@ -539,14 +576,16 @@ def run_triangular(p: TriangularSettings, switches: dict[str, bool], output: Pat
         plot_triangular_mode_atlas(
             need_modes(), model, output / "09_six_mode_atlas.png",
             view_deg=p.FAR_FIELD_VIEW_DEG,
+            samples=p.FAR_FIELD_SAMPLES, far_fields=far_fields,
         )
     if switches["10_best_far_field"]:
         need_modes()
         lasing_mode = analysis[0]
-        print(f"[10] vector far field for lowest-threshold mode {lasing_mode.name}")
+        print(f"[10] vector far field for lowest computed family {lasing_mode.name}; see selection diagnostics")
         plot_triangular_far_field_diagnostics(
             lasing_mode, model, output / "10_best_mode_far_field.png",
             view_deg=p.FAR_FIELD_VIEW_DEG,
+            samples=p.FAR_FIELD_SAMPLES, far=far_fields[lasing_mode.name],
         )
     if switches.get("10_far_field_zoom", False):
         need_modes()
@@ -556,7 +595,7 @@ def run_triangular(p: TriangularSettings, switches: dict[str, bool], output: Pat
     if switches["11_threshold_audit"]:
         need_modes()
         print("[11] Q and uniform-injection threshold audit")
-        write_threshold_audit(p, output, *analysis, model)
+        write_threshold_audit(p, output, *analysis, model, selection)
     if switches["12_small_signal_pump"]:
         need_modes()
         print("[12] uniform-pump small-signal gain/index sweep")
@@ -567,6 +606,9 @@ def run_triangular(p: TriangularSettings, switches: dict[str, bool], output: Pat
         lasing_mode, far, gap_cm, audit = analysis
         summary = {
             "mode": lasing_mode.name,
+            "family_selection": selection,
+            "finite_discretization": p.FINITE_DISCRETIZATION,
+            "eigenvalue_source": "actual_finest_grid" if p.FINITE_DISCRETIZATION == "staggered" else "legacy_upwind_extrapolation",
             "alpha_mode_cm-1": lasing_mode.alpha_per_m / 100.0,
             "required_modal_gain_cm-1": audit["required_modal_gain_cm-1"],
             "threshold_current_A": audit["threshold_current_A"],
@@ -578,10 +620,12 @@ def run_triangular(p: TriangularSettings, switches: dict[str, bool], output: Pat
             "ellipticity": far.ellipticity,
             "selected_family_extrapolation_status": lasing_mode.extrapolation_status,
             "lowest_finest_grid_family": min(modes.values(), key=lambda item: item.grid_alpha_per_m).name,
-            "selection_interpretation": "Lowest extrapolated loss among six retained families, not proven lasing mode",
+            "selection_interpretation": selection["selection_interpretation"],
             "far_field_requested_view_deg": far.requested_view_deg,
             "far_field_evaluated_view_deg": far.evaluated_view_deg,
             "energy_normalization": far.energy_normalization,
+            "angular_samples": far.samples,
+            "moment_reference": far.moment_reference,
         }
         (output / "00_run_summary.json").write_text(
             json.dumps(summary, indent=2), encoding="utf-8"

@@ -1,0 +1,29 @@
+[
+  {
+    "id": "gain500_air120_center1030_L350",
+    "gain_nm": 500,
+    "cap_nm": 0,
+    "pc_nm": 120,
+    "spacer_nm": 2000,
+    "fill": 0.25,
+    "share": 0.25,
+    "dx": 0.45,
+    "dy": 0.45,
+    "aspect": 1.0,
+    "angle_deg": 0.0,
+    "device_um": 350.0,
+    "pairs": 16,
+    "top_silica_nm": 0,
+    "hole_index": 1.0,
+    "period_scale": 0.9980182227235911,
+    "fixed_period_nm": 601.2829941057511,
+    "dopant_density_cm3": 1.38e+21,
+    "upper_state_lifetime_ms": 0.95,
+    "pump_wavelength_nm": 940.0,
+    "pump_absorption_cross_section_cm2": 7e-21,
+    "pump_emission_cross_section_cm2": 1e-21,
+    "laser_absorption_cross_section_cm2": 1.26e-21,
+    "laser_emission_cross_section_cm2": 2e-20,
+    "internal_power_loss_cm_inverse": 0.1
+  }
+]

@@ -120,3 +120,28 @@ def test_equal_power_bidirectional_pump_improves_minimum_inversion() -> None:
     double_weak = solve_bidirectional_unlased_pump(weak, 5000.0)
     alpha = weak.dopant_density_cm3 * weak.pump_absorption_cross_section_cm2
     np.testing.assert_allclose(double_weak.net_absorbed_fraction, 1.0 - np.exp(-alpha * 0.5), rtol=1e-6)
+
+
+def test_local_unattenuated_pump_is_not_mislabeled_as_boundary_absorption():
+    # A local-field approximation can require more supply than one I*A face.
+    # The metadata must expose that limitation rather than claim >100% absorption.
+    config=YbYAGMediumConfig(dopant_density_cm3=1.38e21,gain_thickness_um=2000.)
+    budget=ybyag_energy_budget(np.array([0.,0.]),config,np.array([10.]),np.array([1.]))
+    assert budget['small_signal_pump_optical_depth'] > 1
+    assert budget['local_absorbed_exceeds_reference_face_power']
+    assert budget['net_local_absorbed_pump_power_W'] > budget['reference_local_pump_face_power_W']
+    assert 'not solved external' in budget['pump_power_interpretation']
+
+
+def test_energy_audit_rejects_nonphysical_state_instead_of_clipping():
+    with pytest.raises(ValueError,match='physical'):
+        ybyag_energy_budget(np.array([1.1,-1.]),YbYAGMediumConfig(),np.array([10.]),np.array([1.]))
+
+
+def test_invalid_accepted_integrator_state_cannot_be_hidden_by_plot_clipping(monkeypatch):
+    import pcselsim.solid_state as ss
+    from types import SimpleNamespace
+    monkeypatch.setattr(ss,'solve_ivp',lambda *args,**kwargs:SimpleNamespace(
+        success=True,t=np.array([0.,1.]),y=np.array([[0.,1.2],[1.,-1e5]])))
+    with pytest.raises(RuntimeError,match='clipping is not a repair'):
+        ss.solve_ybyag_rates(YbYAGMediumConfig(),('A',),np.array([10.]),np.array([1.]))

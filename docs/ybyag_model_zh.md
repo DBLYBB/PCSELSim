@@ -1,11 +1,13 @@
 # Yb:YAG 全固态光子晶体激光模型说明
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 > 入口整理（2026-10-08）：本文所述旧脚本已移入 `scripts/archive/legacy_20261008/`，
 > 历史数值与用途保留；日常运行请看 [三个半导体主程序](entrypoints_zh.md)。
 
 > **2026-10-08校正：** 表面PC层序、有源体积/光子归一化、模态与材料增益混比、泵浦可达性已修复。
-> 旧目录 `results/geometry_derived_ybyag_pcsel` 保留为历史记录；当前结果在
-> `results/geometry_derived_ybyag_audit_20261008`。旧“5 mm满足增益”结论已失效。
+> 旧目录 `results/archive/legacy_before_20261021/geometry_derived_ybyag_pcsel` 保留为历史记录；当前结果在
+> `results/archive/legacy_before_20261021/geometry_derived_ybyag_audit_20261008`。旧“5 mm满足增益”结论已失效。
 > 详见 [晶体代码与原始文献审计](audit_crystal_literature_20261008_zh.md)。
 
 > **当前可信度边界：** 现有两个入口用途不同。`run_custom_ybyag_pcsel.py` 是保留的手填光学矩阵

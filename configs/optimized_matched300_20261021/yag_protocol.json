@@ -1,0 +1,75 @@
+{
+  "status": "completed_with_bounded_model_scope",
+  "comparison": "same 300 x 300 micrometre square physical aperture; only the motif and Bravais lattice differ",
+  "square_motif": "one central main hole and one independently placed diagonal satellite",
+  "triangular_motif": "one central main hole and two independently placed diagonal-direction satellites",
+  "gain_layer_nm": 500.0,
+  "pc_layer_nm": 120.0,
+  "lower_SiO2_spacer_nm": 2000.0,
+  "DBR_pairs": 16,
+  "DBR_design_wavelength_nm": 1030.0,
+  "DBR_high_index": 2.1,
+  "DBR_low_index": 1.45,
+  "DBR_first_layer_from_bottom": "low",
+  "bottom_substrate_index": 1.8154,
+  "top_index": 1.0,
+  "gain_index": 1.8166,
+  "passive_YAG_index": 1.8154,
+  "hole_index": 1.0,
+  "cap_nm": 0.0,
+  "top_silica_nm": 0.0,
+  "target_unperturbed_Bragg_nm": 1030.0,
+  "period_rule": "Screening starts at unperturbed Bragg 1030nm. Final outer design changes period only after independently closing the actual lowest sampled pole, to target actual emission 1030 +/-0.01nm. The resulting physical period is then fixed for all competing modes and TE families.",
+  "final_actual_lowest_emission_target_nm": 1030.0,
+  "final_actual_lowest_emission_tolerance_nm": 0.05,
+  "dopant_density_cm3": 1.38e+21,
+  "nominal_dopant_fraction": "10 at%; uncalibrated material assumption",
+  "upper_state_lifetime_ms": 0.95,
+  "pump_wavelength_nm": 940.0,
+  "pump_absorption_cross_section_cm2": 7e-21,
+  "pump_emission_cross_section_cm2": 1e-21,
+  "laser_absorption_cross_section_cm2": 1.26e-21,
+  "laser_emission_cross_section_cm2": 2e-20,
+  "internal_intensity_loss_cm1": 0.1,
+  "maximum_pump_limited_inversion_fraction": 0.875,
+  "maximum_pump_limited_material_gain_cm1": 23.93265,
+  "pump_comparisons": [
+    {
+      "architecture": "edge_dual",
+      "x_cells": 31,
+      "gain_z_cells": 24,
+      "power_definition": "total internal first-entry W across both 300um x 500nm gain-edge faces"
+    },
+    {
+      "architecture": "top_single",
+      "top_passes": 1,
+      "x_cells": 31,
+      "gain_z_cells": 24,
+      "power_definition": "internal first-entry W over the common 300um x 300um top face"
+    }
+  ],
+  "far_field": "complex Ex/Ey emission from each actual finite eigenfield; +/-1 degree window only when the original envelope sampling supports it",
+  "beam_targets": {
+    "center_to_peak_min": 0.98,
+    "ellipticity_max": 1.05,
+    "polar_anisotropy_L2_max": 0.1
+  },
+  "minimum_upward_power_loss_fraction": 0.01,
+  "desired_next_material_threshold_fractional_gap": 0.1,
+  "polarization": "common pcselsim.polarization module; angular trapezoid integration; S3=+2 Im(Ex Ey*); no handedness label",
+  "scope": "Scalar weak-modulation TE CWT; six independent retained waves for triangular lattice; same stratified Green kernel for damping and flux; shared x-z inversion with y averaged. Not full-vector Maxwell, TM, thermal or dynamic stability certification.",
+  "common_analysis_band_nm": [
+    1000,
+    1060
+  ],
+  "recommended_pump_architecture": "edge_dual",
+  "final_census": "Residual-verified complete coarse QZ (square N17, triangular N9) lowest40, analytic continuous counterpropagating stripe challenges with high perpendicular seeds, Gamma and wide supplements; fixed-period independently closed modes and shared inversion; bounded sampled spectrum only",
+  "fabrication_rules": {
+    "minimum_gap_nm": 40,
+    "minimum_hole_caliper_nm": 50,
+    "edge_bias_budget_nm": 3,
+    "placement_budget_nm": 3,
+    "minimum_corner_radius_nm": 5
+  },
+  "legacy_rule_name_note": "Earlier YAG rule name swapped span/gap in its text; numeric JSON fields and actual computation have always been gap40nm and caliper50nm, identical to semiconductor rules. Frozen square_v2 metadata retains the original label for hash stability."
+}

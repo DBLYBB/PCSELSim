@@ -44,7 +44,7 @@ else:
     from compare_square_triangular_equal_size import threshold_audit, cold_cavity_q
     from run_custom_semiconductor_pcsel import ACTIVE_LAYER_NAME, LATTICE_CONSTANT_NM
 
-OUTPUT = PROJECT_ROOT / "results" / "square_fabrication_20261008"
+OUTPUT = PROJECT_ROOT / "results" / "current" / "legacy" / "square_fabrication_20261008"
 DOMAIN_UM = 300.0
 COARSE = (6, 4.0, 13)
 FINAL = (10, 3.0, (13, 17, 21))

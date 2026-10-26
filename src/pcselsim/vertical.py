@@ -17,8 +17,33 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy.constants import pi
-from scipy.sparse import diags
-from scipy.sparse.linalg import eigsh
+from scipy.linalg import eigh_tridiagonal
+
+
+def sample_vertical_interval(
+    axis_m: np.ndarray,
+    values: np.ndarray,
+    start_m: float,
+    stop_m: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Sample a vertical interval including its exact material interfaces.
+
+    Linear interpolation inserts both endpoints when they fall between mesh
+    nodes. Integrating only nodes selected by a layer mask omits parts of the
+    layer and can severely underestimate the overlap of thin quantum wells.
+    Real densities and complex fields are both supported.
+    """
+    axis_m = np.asarray(axis_m, dtype=float)
+    values = np.asarray(values)
+    if axis_m.ndim != 1 or values.shape != axis_m.shape or axis_m.size < 2:
+        raise ValueError("axis and values must be matching one-dimensional arrays")
+    if np.any(np.diff(axis_m) <= 0.0):
+        raise ValueError("vertical coordinates must be strictly increasing")
+    if not axis_m[0] <= start_m < stop_m <= axis_m[-1]:
+        raise ValueError("layer interval must lie inside the vertical mesh")
+    interior = (axis_m > start_m) & (axis_m < stop_m)
+    sampled_axis = np.concatenate(([start_m], axis_m[interior], [stop_m]))
+    return sampled_axis, np.interp(sampled_axis, axis_m, values)
 
 
 @dataclass(frozen=True)
@@ -64,6 +89,8 @@ class LayerStack:
             raise ValueError("A layer stack requires positive thicknesses and indices")
         total_nm = 2.0 * self.padding_um * 1e3 + sum(x.thickness_nm for x in self.layers)
         points = int(np.ceil(total_nm / dz_nm)) + 1
+        if points < 3:
+            raise ValueError("the vertical mesh needs at least one interior point")
         z_nm = np.linspace(0.0, total_nm, points)
         actual_dz_m = float(z_nm[1] - z_nm[0]) * 1e-9
         index = np.full(points, self.bottom_index, dtype=float)
@@ -80,14 +107,14 @@ class LayerStack:
 
         interior_index = index[1:-1]
         count = interior_index.size
-        second = diags(
-            [np.ones(count - 1), -2.0 * np.ones(count), np.ones(count - 1)],
-            offsets=[-1, 0, 1],
-            format="csr",
-        ) / actual_dz_m**2
         k0 = 2.0 * pi / (wavelength_nm * 1e-9)
-        operator = second + diags((k0 * interior_index) ** 2, format="csr")
-        beta2, vectors = eigsh(operator, k=1, which="LA")
+        diagonal = -2.0 / actual_dz_m**2 + (k0 * interior_index)**2
+        off_diagonal = np.full(count - 1, 1.0 / actual_dz_m**2)
+        # The FD operator is real symmetric tridiagonal. A direct selected
+        # eigenpair avoids an iterative large-box solve at every Bragg step.
+        beta2, vectors = eigh_tridiagonal(
+            diagonal, off_diagonal, select="i", select_range=(count - 1, count - 1)
+        )
         cladding_beta2 = (k0 * max(self.top_index, self.bottom_index)) ** 2
         if beta2[0] <= cladding_beta2:
             raise ValueError(
@@ -104,8 +131,10 @@ class LayerStack:
         total = float(integrate(density, z_nm * 1e-9))
         confinement: dict[str, float] = {}
         for name, start, stop in interfaces:
-            mask = (z_nm >= start) & (z_nm <= stop)
-            value = float(integrate(density[mask], z_nm[mask] * 1e-9)) / total
+            layer_z, layer_density = sample_vertical_interval(
+                z_nm * 1e-9, density, start * 1e-9, stop * 1e-9
+            )
+            value = float(integrate(layer_density, layer_z)) / total
             confinement[name] = confinement.get(name, 0.0) + value
         return VerticalMode(
             z_um=(z_nm - 0.5 * total_nm) * 1e-3,
@@ -129,6 +158,7 @@ def inoue2019_stack(pc_average_index: float = 3.30) -> LayerStack:
             Layer("active-InGaAs", 10.0, 3.584),
             Layer("active-AlGaAs-2", 20.0, 3.445),
             Layer("active-InGaAs", 10.0, 3.584),
+            Layer("active-AlGaAs-3", 20.0, 3.445),
             Layer("AlGaAs", 80.0, 3.445),
             Layer("n-clad", 1000.0, 3.122),
         ),

@@ -1,5 +1,7 @@
 # 厚 Yb:YAG 波导 + 底部 DBR 的 PCSEL：空间增益与泵浦闭合
 
+> 2026-10-21 更新：本文保留历史模型与数据解释。旧结果已移至 `results/archive/legacy_before_20261021/`。薄层积分、表 I 层栈、有限离散、频谱及新晶体计算以[本轮修正与验证](corrections_20261021_zh.md)为准，旧数值不作为修正后性能。
+
 更新：2026-10-08。本文说明新增 `src/pcselsim/ybyag_spatial_rates.py` 的模型接口和可验证范围，不替代旧 `solid_state.py`，也不把器件改成普通上下镜 Fabry–Pérot 激光器。
 
 ## 0. 新主程序怎么运行，当前候选是什么
@@ -11,7 +13,7 @@ python scripts/run_ybyag_pcsel.py --quick
 python scripts/run_ybyag_pcsel.py
 ```
 
-第一条仅为粗网格接口检查，不能作为最终设计值。第二条使用主程序给定的多个有限器件网格；多网格 CWT 也不等于全矢量 Maxwell 验证。默认输出在 `results/ybyag_crystal_pcsel/时间戳/` 新目录，每次结果单独保存。若指定 `--output`，应给一个不存在的新目录。
+第一条仅为粗网格接口检查，不能作为最终设计值。第二条使用主程序给定的多个有限器件网格；多网格 CWT 也不等于全矢量 Maxwell 验证。默认输出在 `results/archive/legacy_before_20261021/ybyag_crystal_pcsel/时间戳/` 新目录，每次结果单独保存。若指定 `--output`，应给一个不存在的新目录。
 
 可以用 `--only 01_structure 05_spatial_gain` 等选择步骤；速率/场图需要的有限器件本征模仍会自动计算。步骤 01 输出结构、纵向场、多 TE 家族和底 DBR 光谱；02 为近 Γ 的四波 M–Γ–X 图；03 为有限区域模式与数值收敛；04 为包络、单胞和顶部矢量远场；05 为泵耗尽/反转、共享光子库和功率预算；06 为纵向厚度/帽层/反射相位的诊断扫描。
 

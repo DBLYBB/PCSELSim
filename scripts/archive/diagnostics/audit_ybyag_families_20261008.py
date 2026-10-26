@@ -34,11 +34,12 @@ from pcselsim.solid_state import YbYAGMediumConfig
 from pcselsim.stratified_optics import StratifiedStack, solve_stack
 from pcselsim.three_d_cwt import ThreeDCWTSettings
 from pcselsim.ybyag_spatial_rates import SpatialPumpConfig, SpatialYbYAGModel, solve_spatial_ybyag_steady
+from pcselsim.run_output import prepare_output, write_provenance
 
 GRIDS = (9, 13, 17)
 TE_FAMILIES = (0, 1, 2, 3)
 CAP_BULK_POWER_ABSORPTION_CM = (0.0, 0.1, 1.0, 6.9)
-OUTPUT = ROOT / "results" / "ybyag_crystal_pcsel" / "independent_family_audit_20261008"
+OUTPUT = ROOT / "results" / "current" / "legacy" / "independent_family_audit_20261008"
 
 
 def layer_flux_overlap(result, guided, name):
@@ -62,7 +63,8 @@ def _json(path, value):
 
 
 def run():
-    OUTPUT.mkdir(parents=True, exist_ok=True)
+    prepare_output(OUTPUT, ROOT)
+    write_provenance(OUTPUT, ROOT)
     _, reference_guide, _, fixed_period = main_program.make_structure(te_family=0)
     all_guided = solve_guided_te_modes(reference_guide, main_program.TARGET_WAVELENGTH_NM,
                                        main_program.VERTICAL_STEP_NM, max_modes=256)
